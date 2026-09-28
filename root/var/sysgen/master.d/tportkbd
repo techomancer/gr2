@@ -1,0 +1,8 @@
+*#ident "$Revision: 1.1 $"
+*
+* keyboard - graphics keyboard routines
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+ox
+				keyboard_read(){}
+$$$

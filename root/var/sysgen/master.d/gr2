@@ -1,0 +1,8 @@
+*
+*   gr2_dev: EXPRESS graphics driver
+*   $Revision$
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+s	gr2_		-	-	gfx
+$$$
+

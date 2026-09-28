@@ -1,0 +1,8 @@
+*
+*   lg1: LIGHT graphics driver 
+*   $Revision: 1.1 $
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+s	lg1_		-	-	gfx
+	lg1_earlyinit(){false}
+$$$

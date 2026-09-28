@@ -1,0 +1,8 @@
+*#ident	"$Revision: 1.6 $"
+*
+* kona_dev: KONA graphics output module.
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+sc	kona_		-	-	io,gfxs
+					kona_earlyinit(){false}
+$$$

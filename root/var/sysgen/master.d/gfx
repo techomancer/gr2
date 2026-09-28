@@ -1,0 +1,20 @@
+*
+*   gfx:  graphics character device
+*   $Revision: 1.8 $
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+soc	gfx		57	-	gfxs
+$$$
+
+#define GFX_MASTER_C   /* define this so gfx.h doesn't define things
+                          that conflict with the kernel */
+#include "sys/gfx.h"
+
+#define GFX_DEV_LIMIT 255
+int GfxDevLimit = GFX_DEV_LIMIT ;	/* maximum number of graphics opens */
+struct gfx_gfx *GfxDev[GFX_DEV_LIMIT] ;
+#if _MIPS_SIM == _ABI64
+unsigned char *cg2_base = (unsigned char *)0x900000001D003200;
+#else
+unsigned char *cg2_base = (unsigned char *)0xBD003200;
+#endif

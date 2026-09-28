@@ -1,0 +1,51 @@
+#!/bin/sh
+#
+# stopgfx.sh
+#
+# stop the window system
+#
+#
+# Copyright 1991, Silicon Graphics, Inc.
+# All Rights Reserved.
+#
+# This is UNPUBLISHED PROPRIETARY SOURCE CODE of Silicon Graphics, Inc.;
+# the contents of this file may not be disclosed to third parties, copied or
+# duplicated in any form, in whole or in part, without the prior written
+# permission of Silicon Graphics, Inc.
+#
+# RESTRICTED RIGHTS LEGEND:
+# Use, duplication or disclosure by the Government is subject to restrictions
+# as set forth in subdivision (c)(1)(ii) of the Rights in Technical Data
+# and Computer Software clause at DFARS 252.227-7013, and/or in similar or
+# successor clauses in the FAR, DOD or NASA FAR Supplement. Unpublished -
+# rights reserved under the Copyright Laws of the United States.
+#
+# $Revision: 1.10 $
+#
+
+if [ ! -w /etc/inittab ]
+then
+	echo "Error: permission denied -- you must be super user to run $0."
+	exit 1
+fi
+
+if who -lu | grep "[ 	]tport[ 	]" > /dev/null
+then
+	:
+else
+	if sed '/^tp:/ s/:off:/:respawn:/' > /etc/inittab.$$ < /etc/inittab && [ -s /etc/inittab.$$ ]
+	then
+		sync
+		mv /etc/inittab.$$ /etc/inittab
+		sync
+		telinit q
+	else
+		rm /etc/inittab.$$
+		echo "Error: $0 unable to turn on textport getty, check /etc/inittab"
+		exit 1
+	fi
+fi
+
+/etc/chkconfig windowsystem off
+
+/etc/killall Xsgi Xsgi_d

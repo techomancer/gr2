@@ -1,0 +1,7 @@
+*#ident "$Revision: 1.1 $"
+*
+* textport driver
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+sfr	tp	46	-	stty_ld,io
+$$$

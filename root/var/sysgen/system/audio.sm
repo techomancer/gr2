@@ -1,0 +1,23 @@
+* AL Audio kernel support
+*
+
+
+
+
+
+
+
+NOPROBE: 0
+
+
+
+
+
+USE: kdsp
+
+
+
+* Probe for the A2 hardware audio module (currently found on Indigo2 and Indy)
+* If found, the device dependent a2_dd, and the device independent
+* kdsp modules will be loaded for audio library support
+VECTOR: module=a2_dd vector=0x0 unit=0 base=0xBFBD8000 exprobe=(r,0xBFBD8020,2,0x0000,0x8000)

@@ -1,0 +1,6 @@
+* kdsp rad device-dependent module
+*
+*FLAG   PREFIX 		 SOFT    #DEV    DEPENDENCIES
+cso     rad_		 -	 -	 kdsp
+
+$$$

@@ -1,0 +1,34 @@
+*
+* SHMIQ:	STREAMS driver for SHared Memory Input Queue
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+osf	shmiq		54	-	clone, qcntl
+$$$
+#include "sys/shmiq.h"
+#define NSHMIQS 9
+/* maximum number of active instanteations */
+int shmiq_cnt = NSHMIQS ;
+/* mutex lock for access to minor device array
+ * Also used by the "qcntl" driver
+ * (Actually initialized by the "qcntl" driver' qcntlinit()
+ */
+mutex_t shmiq_lock ;
+/* The actual array of structure pointers to active instantiations */
+struct shmiqdev dev_shmiq[NSHMIQS] ;
+
+/* these are needed for the NDS psuedo dual-head drivers.
+ *
+ * they go here so that we can exclude these drivers from 
+ * mini-root kernel builds to save space
+ */
+int kbd_index = -1;
+int kbd_minor = -1;
+int mouse_index = -1;
+int mouse_minor = -1;
+/*  these are in case there is no physical mouse or keyboard present */
+int  bogus_kbd_index = -1;
+int  bogus_kbd_minor = -1;
+int  bogus_mouse_index = -1;
+int  bogus_mouse_minor = -1;
+
+

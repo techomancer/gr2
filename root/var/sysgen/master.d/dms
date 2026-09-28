@@ -1,0 +1,10 @@
+*
+* dms: Digital Media Stream driver
+*
+* $Revision: 1.1 $
+*
+* XXX Need a real major number.  Reuse the DMRB number?
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+soc	dms	248	-
+$$$

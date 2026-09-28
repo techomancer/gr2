@@ -1,0 +1,30 @@
+*
+* IP32 parallel port I/O driver
+*
+* The default (auto-negotiation) operation mode of /dev/plp 
+* can be overwritten by plpopmode
+*
+* 0: Auto-negotiation Mode
+* 4: Compatibility Mode
+* 6: ECP(Extended Capabilities Port) Mode
+* 8: EPP(Enhanced Parallel Port) Mode
+*
+* If data corrupt happens on some printers (e.g. HP DeskJet 1600C) in
+* Compatibility mode then set work around delay: plpwardelay = x
+* (x = 1,2,...; x * 1ms delay)
+* x > 0: conditional delay detected by the driver.
+* x < 0: always force delay.
+*
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+csdRD	plp     38      2
+
++thread_class	parallel
+
+$$$
+
+int plpopmode = 4;
+
+int plpwardelay = 0;
+
+int plprtmout = 0;

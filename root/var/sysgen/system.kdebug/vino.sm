@@ -1,0 +1,5 @@
+*  Video drivers		$Revision: 1.1 $
+*
+*  vid/vino  -> Indy 
+*
+USE: vino

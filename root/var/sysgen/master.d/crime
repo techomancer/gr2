@@ -1,0 +1,7 @@
+*
+*   cg1: Moosehead graphics (CRIME) driver 
+*   $Revision: 1.3 $
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+s	crime_		-	-	gfx
+$$$

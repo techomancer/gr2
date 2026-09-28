@@ -1,0 +1,7 @@
+*
+* IDEV:	helper functions for shmiq input devices
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+ox	idev	-	-	shmiq
+$$$
+

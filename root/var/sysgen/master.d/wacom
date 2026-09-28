@@ -1,0 +1,7 @@
+*
+* WACOM:	streams `wacom parser'
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+omdR	wacom	-	-	idev
+$$$
+

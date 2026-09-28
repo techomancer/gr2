@@ -1,0 +1,7 @@
+*
+*   ng1: NEWPORT graphics driver 
+*   $Revision$
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+s	ng1_		-	-	gfx
+$$$

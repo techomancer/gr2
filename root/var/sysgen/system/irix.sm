@@ -1,0 +1,540 @@
+**************************************************************************
+*									 *
+*  Copyright (C) 1986-1996  Silicon Graphics, Inc.			 *
+*									 *
+*  These coded instructions, statements, and computer programs  contain  *
+*  unpublished  proprietary  information of Silicon Graphics, Inc., and  *
+*  are protected by Federal copyright law.  They  may  not be disclosed  *
+*  to  third  parties  or copied or duplicated in any form, in whole or  *
+*  in part, without the prior written consent of Silicon Graphics, Inc.  *
+*									 *
+**************************************************************************
+*
+* This file is used to control the configuration of the operating system.
+* Its is read by the lboot(1) command which builds the /1 file.  The
+* syntax of this file is described in system(4).  For more information on
+* system configuration, see autoconfig(1), lboot(1), system(4), master(4),
+* and systune(1).
+*
+* $Revision: 1.762 $
+*
+*==========================================================================
+* GIO bus addresses
+*
+* The Indigo and Indy have two GIO bus connectors.  Each GIO bus device
+* identifies itself to the system by answering a long read with an "ID" value.
+* IDs are either 8 or 32 bits long.  IDs less than 128 are 8 bits long,
+* with the most significant 24 bits read from the slot undefined.
+*
+* 32-bit:
+*    Slot GFX address range is physical 0xbf000000 - 0xbf3fffff
+*    Slot 0   address range is physical 0xbf400000 - 0xbf5fffff
+*    Slot 1   address range is physical 0xbf600000 - 0xbf7fffff
+*
+* 64-bit:
+*    Slot GFX address range is physical 0x900000001f000000 - 0x900000001f3fffff
+*    Slot 0   address range is physical 0x900000001f400000 - 0x900000001f5fffff
+*    Slot 1   address range is physical 0x900000001f600000 - 0x900000001f7fffff
+*
+* Indigo2 (all models) have three physical connectors, but only two physical
+* slots, SLOTGFX and SLOT0. 
+*
+
+*
+* GIO bus IDs
+*
+* Each GIO bus device identifies itself to the system by answering a
+* read with an "ID" value.  IDs are either 8 or 32 bits long.  IDs less
+* than 128 are 8 bits long, with the most significant 24 bits read from
+* the slot undefined.
+*
+* 32-bit IDs are currently divided into
+*	bits 0-6        the product ID; ranges from 0x00 to 0x7F.
+*	bit 7		0=GIO Product ID is 8 bits wide
+*			1=GIO Product ID is 32 bits wide.
+*	bits 15-8       manufacturer version for the product.
+*	bit 16		0=GIO32 and GIO32-bis, 1=GIO64.
+*	bit 17		0=no ROM present
+*			1=ROM present on this board AND next three words
+*				space define the ROM.
+*	bits 31-18	up to manufacturer.
+* Note that this may change in future 32-bit IDs
+*
+* IDs above 0x50/0xd0 are of 3rd party boards.
+*
+* Contact the Developer Program to allocate new IDs, recently Rick McLeod.
+*
+* This list must match the list in major.h
+*
+* 8-bit IDs
+*	0x01		XPI low cost FDDI
+*	0x02		GTR TokenRing (no longer supported)
+*	0x04		Synchronous ISDN
+*	0x06		Canon Interface
+*	0x08		JPEG (Double Wide)
+*	0x09		JPEG (Single Wide)
+*	0x0a		XPI mez. FDDI device 0
+*	0x0b		XPI mez. FDDI device 1
+*	0x0e		E-Plex 8-port Ethernet
+*	0x30		Lyon Lamb IVAS
+*	0xb8		GIO 100BaseTX Fast Ethernet (gfe)
+*
+* 32-bit IDs
+*	0x85		ATM board
+*	0x87		16 bit SCSI Card
+*	0x8c		SMPTE 259M Video
+*	0x8d		Babblefish Compression
+*
+*****************************************************************************
+
+
+*
+* The following statements direct lboot as it generates a kernel.
+* There are 2 styles of VECTOR line.  The preferred style is defined
+* first and in depth in the driver writers guide and the system
+* file man page.  Also look within this file for examples.
+*
+*	VECTOR directives must be before all other lboot directives which
+*		refer to modules, such as USE, INCLUDE, and EXCLUDE.
+*
+*	VECTOR lines must occur in the opposite order that the devices
+*		should be probed.  Do not change the order of the VECTOR
+*		lines in this file, unless you understand the implications.
+*
+* VECTOR: bustype module adapter [ipl [vector]] [ctlr] iospace iospace2
+*	  iospace3 probe_space exprobe_space
+*
+*	bustype: bus the device sits on.
+*	module:  boot module
+*	adapter: identifies which bus of type bustype
+*	ipl:	 VME interrupt priority level
+*	ctlr:	 identifying number for driver
+*	iospace: base address of card
+*	iospace2,3:	additional addresses passed to driver edtinit
+*	probe_space:	address and size to be read to determine existence
+*			of card (not specified)
+*	exprobe_space:	extended probe which allows for reading and value
+*			checking and writing of values as part of the probe.
+*
+* The old style VECTOR line is defined as:
+*
+* VECTOR: module [intr] [vector ipl unit] [base] [probe [probe_size]]
+*		[base2] [base3]
+*
+*	module: boot module
+*	intr:	interrupt function (default: module_prefix|"intr")
+*	vector: vme interrupt vector
+*	ipl:	(vme or local IRQx) interrupt priority level
+*		do not specify it unless it is needed
+*	base:	base address of card
+*	probe:	address read to determine existence of card
+*		(no probe address implies existence)
+*	probe_size: size of probe (default 4 bytes)
+*	base2, base3:	additional addresses passed to driver edtinit
+*		routine via edt structure
+*
+*****************************************************************************
+
+NOPROBE: 0
+*
+*
+* lboot/system-file version
+VERSION: 3
+
+
+
+
+
+
+
+
+
+*
+*
+* Network Interfaces
+*
+*	Primary interface is determined by network script via "primary"
+*	flag for "ifconfig" regardless of the order in lboot drv list.
+*
+*
+* Madge Tokenring driver
+*	PCI version on Octane, O2 and Origin
+*
+* XPI FDDI board
+*
+VECTOR: module=if_xpi vector=0x0 ctlr=2 base=0xBF000000 exprobe=(r,0xBF000000,4,1,0xff)
+VECTOR: module=if_xpi vector=0x0 ctlr=0 base=0xBF400000 exprobe=(r,0xBF400000,4,1,0xff)
+VECTOR: module=if_xpi vector=0x0 ctlr=1 base=0xBF600000 exprobe=(r,0xBF600000,4,1,0xff)
+*
+* GIO slot Ethernet cards in INDY/HPC3 machines
+*
+VECTOR: module=if_eg2 vector=0x0 ctlr=1 base=0xBFB00000 exprobe=((rn,0xBFBD9858,4,0x01,0x01),(rn,0xBFB001C3,1,0x01,0xff))
+VECTOR: module=if_eg2 vector=0x0 ctlr=2 base=0xBF980000 exprobe=((rn,0xBFBD9858,4,0x01,0x01),(rn,0xBF9801C3,1,0x01,0xff))
+*
+* GFE GIO Fast Ethernet 100BaseTX
+*
+VECTOR: module=if_gfe vector=0x0 ctlr=0 base=0xBF400000 exprobe=(r,0xBF400000,4,0xb8,0xff)
+VECTOR: module=if_gfe vector=0x0 ctlr=1 base=0xBF600000 exprobe=(r,0xBF600000,4,0xb8,0xff)
+*
+* Integral Ethernet interface
+*
+VECTOR: module=if_ec2
+*
+* Parallel Port
+*
+VECTOR: module=hpc3plp
+
+*
+* SCSI host adapter driver
+*
+VECTOR: module=wd95 vector=0x0 ctlr=0 base=0xBFB00000 exprobe=((rn,0xBFBD9858,4,0x01,0x01),(r,0xBFB02000,4,0,0))
+VECTOR: module=wd93 unit=0 base=0xBFB00000
+*
+* SCSI modules
+*    These cannot be probed for so must always be manually included.
+*	dksc	- Hard Disk and CD-ROM
+*	tpsc	- Tape
+*	smfd	- Floppy
+*	ds	- Generic SCSI support (devscsi)
+*
+USE: cdl, scsi, dksc, tpsc, tpscutil, ds, scsiha
+
+USE: smfd
+*
+* XLV Logical volume pseudo-device driver core
+*
+USE: xlv
+*
+* XLV Logical volume plexing support
+*
+USE: xlv_plex
+*
+* FAILOVER Dual path HA failover support
+*
+USE: failover
+USE: cpr
+*
+* File systems
+*      efs       - Local Disk filesystem
+*      xfs       - XFS Local filesystem
+*      grio	 - guaranteed rate I/O for xfs
+*      xfsrt	 - grio support in xfs
+*      dmi	 - data management interfaces
+*      xfsdmapi  - XFS specific data management interfaces
+*      umfs      - User Mode Filesystem
+*      nfs,snfs  - Network File System
+*      nfs3      - Network File System version 3 client
+*      proc      - Debug (/proc) pseudo-filesystem, see proc(4)
+*      uds       - Unix Domain Socket, see Unix(7F)
+*      fifofs    - Streams-based pipes and fifos
+*      pipefs    - Old style, uni-directional pipes, see pipe(2)
+*      specfs    - Character and block device interface
+*      fd        - File descriptor (/dev/fd) pseudo-filesystem, see fd(4)
+*      namefs    - Mountable streams, see fattach(3C)
+*      cfs	 - Nexus Cell File System
+*      cxfs	 - Cellular XFS V1 (uses CFS)
+*
+* The /dev/fd filesystem must be marked USE to allow for the execution
+* of set-user-ID/set-group-ID interpreter scripts (see exec(2)).
+*
+INCLUDE: specfs, pipefs, proc, fifofs, hwgfs
+USE: fd, namefs
+USE: efs, uds
+USE: nfs, snfs, lockd, nfs3, svckudp
+*
+* onc3 modules
+*
+USE: autofs, cachefs, lofs
+*
+* Disk quota subsystem (see quotaon(1M) command)
+*
+USE: quotas
+USE: xfsquotas
+*
+* CXFS-V1 subsystems require both CFS and XFS
+* They should appear before XFS and CFS for proper linking
+*
+EXCLUDE: cxfs
+*
+* XFS related subsystems
+*
+USE: dmi xfsdmapi umfs xfsrt grio
+*
+* NOTE: xfs USE line must come *after* its 'dependents' (eg. xfsrt,dmi) 
+* or those dependents may not get linked in.
+*
+USE: xfs    
+*
+* Note cfs USE line is the last of the file systems because this will
+* cause to the be first in vfssw and so non-golden cells will have a
+* chance (in dcvfs_rootinit) to do a remote mountroot.  
+*
+EXCLUDE: cfs
+*
+* Hardware graph subsystem
+*
+USE: graph
+*
+* libnsl (TLI) & libsocket helper modules
+*
+USE: sockmod, timod, tirdwr,
+*
+* TPI loopback device drivers
+*
+USE: ticlts, ticots, ticotsord
+*
+* TPI Streams device drivers for sockets networking
+*
+USE: tpisocket, tpitcp, tpiudp, tpirawip, tpiicmp
+*
+* DLPI: Data Link Provider Interface
+*
+USE: xtimer, snif
+USE: llc2
+*
+* SVR4 tty compatibility modules
+*
+USE: ldterm, ptem
+*
+* Streams based pipe support
+*
+USE: pipemod
+USE: connld
+*
+* Streams event logger (see strerr(1M))
+*
+USE: log
+*
+* Streams administrative device
+*
+USE: sad
+*
+* Internationalization Support (see kbdset(1))
+*
+* alp - Algorithm Pool
+* kbd - Keyboard mapping and string translation
+*
+USE: kbd, alp
+*
+* IP Filter (see ipfilterd(1M))
+*
+USE: ipfilter
+*
+* IP Multicast routing (see mrouted(1M))
+*
+USE: ip_mroute
+*
+* Serial Line IP (see slip(1M))
+*
+USE: if_sl
+*
+* Point to Point Protocol (see ppp(1M))
+*
+USE: if_ppp
+*
+* swIPe Protocol
+*
+USE: if_sw
+*
+* network load sharing pseudo-device driver
+*
+USE: if_ls
+USE: if_lsp
+*
+* Filesystem Control (see fsr(1M))
+*
+USE: fsctl
+*
+* Inode Monitor (see famd(1M))
+*
+USE: imon
+****************************************************************
+*  The following modules implement security features that are
+*  part of Irix.  The audit trail and access control lists are
+*  not installed  be default.  Capability must always be present.
+*
+*  Extended attribute support
+*
+USE: xfs_attr_fetch
+USE: eag
+*
+*  Security Audit Trail
+*
+* TEMP   - disable on SN0 cells.
+USE: sat
+*
+* Capability (Privilege) Sets
+*
+USE: capability
+*
+* Access Control Lists (ACLs)
+*
+USE: acl
+USE: acl_hwg
+USE: acl_xfs
+USE: acl_nfs3
+****************************************************************
+*  The following modules are installed with the Trix B1/CMW
+*  add-on package.
+*
+* Mandatory Access Control
+*
+USE: mac
+USE: cap_mac_access
+USE: mac_nfs3
+USE: mac_xfs
+USE: mac_ipc
+USE: mac_specfs
+USE: mac_autofs
+USE: mac_proc
+USE: mac_pipe
+USE: mac_fifo
+USE: mac_fd
+USE: mac_efs
+USE: mac_hwg
+*
+* Network Session Manager
+*
+USE: sesmgr
+USE: ip_sec
+****************************************************************
+*
+* Kernel Asyncio for Informix
+*
+USE: kaio
+*
+* Post Wait driver for Oracle
+*
+USE: postwait
+*
+* kernel listio (Oracle Performance)
+*
+USE: klistio
+*
+* ShareII Resource Management System from Softway
+*
+USE: shareII
+*
+* Stubs
+*
+USE: dnstubs, gfxstubs, prfstubs, quotasstubs, idbgstubs, nfsstubs
+USE: pipefsstubs, vidstubs, ng1stubs, gr2stubs, frsstubs, griostubs
+USE: efsstubs, xfsstubs, xfsquotasstubs, xlvstubs, tpisocketstubs, bpqueuestubs
+USE: dmistubs, xfsdmapistubs, umfsstubs
+USE: macstubs, aclstubs
+USE: satstubs, sesmgrstubs
+USE: xlvplexstubs
+USE: failoverstubs
+USE: cachefsstubs, nlmstubs, lockdstubs, mgrasstubs, crimestubs
+USE: xfsrtstubs, frustubs, cachefsidbgstubs, kaiostubs, devicestubs, mgvstubs
+USE: dfsstubs, postwaitstubs, klistiostubs, uncstubs
+USE: shareIIstubs
+USE: cxfsstubs 
+USE: swipestubs
+USE: atmstubs
+*
+* Spin locks - both kernel and user level
+* Kernel spinlocks used only on MultiProcessor systems
+*
+INCLUDE: nolocks
+*
+*
+* Required kernel modules
+*
+*   kernel   - machine specific
+*   os	     - system calls, vm, etc..
+*   disp     - Process scheduler
+*   numa     - Numa Memory Management
+*   ksync    - kernel synchronization onjects (mutex_lock, sv_wait, psema...)
+*	or  ksync_metered  - metered kernel synchronization objects
+*	or  ksync_named    - named kernel synchronization objects
+*   mem      - /dev/mem, /dev/null, /dev/mmem, /dev/kmem
+*   zero     - /dev/zero
+*   ipc      - support for sem, shm, and msg
+*   sem      - System V semaphores (see semop(2))
+*   msg      - Interprocess messages (see msgop(2))
+*   klog     - Kernel message logger (see klog(7))
+*   usema    - User semaphores (see usema(7))
+*   usync    - usync module
+*   psema    - posix named semaphore module
+*   sharena  - nanothreads
+*
+KERNEL: kernel
+INCLUDE: numa, os, disp, mem, zero, sharena
+INCLUDE: ksync
+USE: ipc, msg, sem
+USE: psema, usync
+USE: klog
+USE: usema
+*
+* General I/O modules
+*
+*   io     - VME interrupt handler
+*   gentty - Generic tty device (/dev/tty)
+*   ptc    - Pseudo terminals
+*   sduart - Serial port driver
+*   cn     - Virtual console driver
+*
+INCLUDE: io, gentty, ptc, sduart, cn, stream
+USE: tserialio
+*
+* Keyboard/mouse driver
+*
+INCLUDE: pckm
+*
+* User mode device driver support
+*
+USE: usrbus
+*
+* Bus Registrations
+*
+*
+* VMEbus service provider
+*
+USE: vmestubs
+*
+* Number-in-a-can kernel interface
+*
+*
+* Device specifications
+* 
+* The ROOTDEV specification can be customized with the format:
+*   /dev/dsk/dks?d?s?
+*
+
+ROOTDEV: /dev/root
+
+SWAPDEV: /dev/swap 0 0
+DUMPDEV: /dev/swap
+
+
+
+* Kernel debugging tools (see profiler(1M) and idbg(1M))
+*
+* for most users, only the first line below needs to be changed
+* from EXCLUDE to INCLUDE when configuring the kernel debugger.
+EXCLUDE: idbg, disp_idbg, mloadidbg, bsdidbg, stridbg, graphidbg, asidbg, procidbg, vmidbg, xfsidbg 
+EXCLUDE: xlvidbg
+EXCLUDE: pgrpidbg, sessionidbg
+EXCLUDE: dmiidbg, umfsidbg, grioidbg, spec_idbg
+EXCLUDE: dp_idbg, cachefsidbg
+EXCLUDE: nfsidbg
+USE: prf
+*
+* Compilation and load flags
+*	To load a kernel that can be co-resident with symmon
+*	(for breakpoint debugging) replace LDOPTS
+*	with the following.  You must also install eoe.sw.kdebug
+*	and eoe.sw.perf, and change (at least) the first idbg line
+*	above from EXCLUDE to INCLUDE
+*
+*LDOPTS:  -non_shared -e start -N -woff 133 -G 8  -woff 84 -woff 47 -woff 17 -mips3 -n32  -nostdlib    -T 88070000 
+*
+LDOPTS:  -non_shared -e start -N -woff 133 -G 8  -woff 84 -woff 47 -woff 17 -mips3 -n32  -nostdlib    -T 88002000  -wall
+CCOPTS:  -DEXPRESS -DIP22 -DEXPRESS -D_KN32PROM32 -xansi -D_KN32PROM32 -D_PAGESZ=4096 -D_KERNEL -DSTATIC=static -DDEBUG_CONPOLL -DBADVA_WAR -DJUMP_WAR -DPROBE_WAR -D_MEM_PARITY_WAR  -D_TLB_LOOP_LIMIT -DTLBMOD_BADVADDR_WAR  -D_VCE_AVOIDANCE -D_R4600_CACHEOP_WAR -D_R4600_2_0_CACHEOP_WAR  -D_VCE_AVOIDANCE_DEBUG  -D_IRIX5_MIPS3 -D_IRIX5_MIPS4 -D_R5000_BADVADDR_WAR  -DMIPS4_ISA -DIDLESTACK_FASTINT  -DSW_FAST_CACHE_SYNCH -DCKPT  -D_R5000_CVT_WAR=1 -D_MTEXT_VFS   -DPOWER_DUMP -DR4000_DADDIU_WAR -D_MP_NETLOCKS -DMP_STREAMS=1 -DSP -DIP22 -DR4000 -DR4000PC -DR4600 -DR4600SC -DTRITON -DTRITON_INDYSC    -g3 -O2 -G 8  -TENV:kernel -OPT:space -OPT:Olimit=0 -CG:unique_exit=on -TENV:X=1 -OPT:IEEE_arithmetic=1 -OPT:roundoff=0 -OPT:wrap_around_unsafe_opt=off -fullwarn -diag_error 1116,1196,1551,1413,1498,1009,1110,1171,1047,1140,1164,1412,1069,1035,1183 -non_shared -mips3 -n32    -woff 1685,515,608,658,799,803,852,1048,1233,1499,1501  -DDEFAULTSEMAMETER=1 -I.
+*
+CC: TOOLROOT= /var/sysgen/root /var/sysgen/root/usr/bin/cc
+LD: TOOLROOT= /var/sysgen/root /var/sysgen/root/usr/bin/ld
+TUNE-TAG:32
+TUNE-TAG:NOT_MINIROOT
+TUNE-TAG:NOT_NEED_LPAGES

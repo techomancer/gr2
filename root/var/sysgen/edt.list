@@ -1,0 +1,12 @@
+struct vme_intrs vme_intrs[] = {
+	{ 0 }
+};
+
+struct edt edt[] = {
+	{  0,   0, 0,  0,  0, 0,              0, 0,          0,          0, (caddr_t)0xbfb00000l, 0,          0,          0, (caddr_t)         0l, 0,          0,          0, (caddr_t)         0l},
+	{  0,   0, 0,  0,  0, 0,              0, 0,          0,          0, (caddr_t)         0l, 0,          0,          0, (caddr_t)         0l, 0,          0,          0, (caddr_t)         0l},
+	{  0,   0, 0,  0,  0, 0,              0, 0,          0,          0, (caddr_t)         0l, 0,          0,          0, (caddr_t)         0l, 0,          0,          0, (caddr_t)         0l},
+	{  0,   0, 0,  0,  0, 0,              0, 0,          0,          0, (caddr_t)0xbfbd8000l, 0,          0,          0, (caddr_t)         0l, 0,          0,          0, (caddr_t)         0l},
+};
+
+int nedt = sizeof (edt)/ sizeof (struct edt);

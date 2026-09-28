@@ -1,0 +1,15 @@
+*
+* ECPPLP - speedracer/sn0 parallel port
+*
+* If data corruption happens on some printers (e.g. HP DeskJet 1600C) in
+* Compatibility mode then set work around delay: plpwardelay = x
+* (x = 1,2,...; x * 1ms delay)
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+cdR	plp       -       -
+
++thread_class	parallel
+
+$$$
+
+int plpwardelay = 0;

@@ -1,0 +1,8 @@
+*
+* DIAL:	streams `spaceball packet'
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+omdR	sball	-	-	idev
+
+$$$
+

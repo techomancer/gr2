@@ -1,0 +1,9 @@
+*
+* In Kernel Audio Handling - use instead of hdsp
+*
+*FLAG   PREFIX  SOFT    #DEV    DEPENDENCIES
+cso      kdsp    53      -       
+
++thread_class	audio
+
+$$$

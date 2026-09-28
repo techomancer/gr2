@@ -1,0 +1,7 @@
+*#ident	"$Revision: 1.1 $"
+*
+* textport:	Common textport routines 
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+ox	htport		-	-	tport
+$$$

@@ -1,0 +1,8 @@
+*
+*   mgras: MGRAS graphics driver
+*   $Revision: 1.3 $
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+sc	mgras_		-	-	gfx,gfxs
+$$$
+

@@ -1,0 +1,9 @@
+*
+* xconn - X shared memory transport support
+*
+*FLAG	PREFIX	MAJOR#	#DEV	DEPENDENCIES
+cns	xconn_	265	200
+
+$$$
+
+unsigned int xconn_numdevs = ##D;

@@ -1,0 +1,8 @@
+*
+* Digital Media kernel extensions
+*
+* $Revision: 1.4 $
+*
+* dms - digital media streams
+*
+USE: dms

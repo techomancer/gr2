@@ -1,0 +1,7 @@
+*
+* IMP:	streams `imp mouse parser'
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+omdR	imp	-	-	idev
+$$$
+

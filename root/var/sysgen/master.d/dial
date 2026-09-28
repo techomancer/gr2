@@ -1,0 +1,8 @@
+*
+* DIAL:	streams `dial/button box packet'
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+omdR	dial	-	-	idev
+
+$$$
+

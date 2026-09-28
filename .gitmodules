@@ -1,0 +1,25 @@
+[submodule "m2c"]
+	path = m2c
+	url = https://github.com/techomancer/m2c.git
+	branch = irixn32
+[submodule "spimdisasm"]
+	path = spimdisasm
+	url = https://github.com/Decompollaborate/spimdisasm.git
+[submodule "irix-657m-src"]
+	path = irix-657m-src
+	url = https://github.com/calmsacibis995/irix-657m-src.git
+[submodule "mame"]
+	path = mame
+	url = https://github.com/mamedev/mame.git
+[submodule "OpenGL-Registry"]
+	path = OpenGL-Registry
+	url = https://github.com/KhronosGroup/OpenGL-Registry.git
+[submodule "libdwarf-code"]
+	path = libdwarf-code
+	url = https://github.com/davea42/libdwarf-code.git
+[submodule "netbsd"]
+	path = netbsd
+	url = https://github.com/NetBSD/src.git
+[submodule "ogl-sample"]
+	path = ogl-sample
+	url = https://github.com/jrmuizel/ogl-sample.git

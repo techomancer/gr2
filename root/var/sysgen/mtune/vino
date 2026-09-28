@@ -1,0 +1,54 @@
+**************************************************************************
+* Copyright 1990-1992, Silicon Graphics, Inc. 
+* All Rights Reserved.
+*
+* This is UNPUBLISHED PROPRIETARY SOURCE CODE of Silicon Graphics, Inc.;
+* the contents of this file may not be disclosed to third parties, copied or 
+* duplicated in any form, in whole or in part, without the prior written 
+* permission of Silicon Graphics, Inc.
+*
+* RESTRICTED RIGHTS LEGEND:
+* Use, duplication or disclosure by the Government is subject to restrictions 
+* as set forth in subdivision (c)(1)(ii) of the Rights in Technical Data
+* and Computer Software clause at DFARS 252.227-7013, and/or in similar or 
+* successor clauses in the FAR, DOD or NASA FAR Supplement. Unpublished - 
+* rights reserved under the Copyright Laws of the United States.
+**************************************************************************
+*
+*#ident "$Revision: 1.6 $"
+*
+* This is a read-only file. User-specified tunables are stored
+* in var/sysgen/stune file.
+
+* vino - Indy Video In No Out
+
+vino:	static
+* name			default      	minimum		maximum
+
+*** Not used any more:
+*** vino_mtune_flags	0
+
+* Change for 5.3:
+*
+* Vino_mtune_dmrbpages limits the size of the DMA descriptor table
+* used by the VINO video capture.  This in turn limits how many pages
+* allocated to the Digital Media Ring Buffers will be usable when
+* capturing video.  The number of pages in vino_mtune_dmrbpages is
+* what the DMRB size specifically for VINO will be limited to when
+* allocated.
+*
+* If it's set to zero, then a default based on the amount of memory
+* available at run time is used.  If a limit of less than that is desired,
+* set this variable to the maximum number of pages that the ring buffers
+* can use.
+*
+* A value of -1 indicates do not preallocate any space for VINO DMA
+* descriptors.
+*
+* Note that if a DMA descriptor table size is needed that is greater
+* than the size specified here and cannot be allocated contiguously
+* at run time (possibly due to memory fragmentation), then the video
+* transfer will not be started, and will return an ENOMEM error.
+* The error recovery is to attempt the capture with a smaller DMRB.
+
+vino_mtune_dmrbpages	0

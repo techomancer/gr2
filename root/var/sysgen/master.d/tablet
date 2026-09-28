@@ -1,0 +1,7 @@
+*
+* TABLET:	streams `tablet parser'
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+omdR	tablet	-	-	idev
+$$$
+

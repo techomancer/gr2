@@ -1,0 +1,8 @@
+*
+*   vino_dap: vino dap table allocation
+*   $Revisions$
+*
+*FLAG   PREFIX          SOFT    #DEV    DEPENDENCIES
+*
+s       vino_dap_        -       -
+$$$

@@ -1,0 +1,8 @@
+*
+* DIALBOX:	streams `dial box packet'
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+omdR	dialbox	-	-	idev
+
+$$$
+

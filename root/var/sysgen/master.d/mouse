@@ -1,0 +1,7 @@
+*
+* MOUSE:	streams `mouse packet'
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+om	mouse	-	-	idev
+$$$
+

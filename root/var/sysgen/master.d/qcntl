@@ -1,0 +1,7 @@
+*
+* QCNTL:
+* character interface to the shmiq (SHared Memory Input Queue) STREAMS driver
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+osc	qcntl		55	-	shmiq
+$$$

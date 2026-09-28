@@ -1,0 +1,6 @@
+* kdsp a2 device-dependent module
+*
+*FLAG   PREFIX 		 SOFT    #DEV    DEPENDENCIES
+cso     a2_		 -	 -	 kdsp 
+
+$$$

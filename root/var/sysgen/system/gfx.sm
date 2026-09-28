@@ -1,0 +1,44 @@
+
+*
+* gfx.sm - Graphics system file
+*
+* The contents of this file are used by autoconfig when configuring /1 .
+* See system(4) for information on the syntax of this file.
+*
+* $Revision: 1.57 $
+*
+
+*
+*  Input drivers
+*
+INCLUDE: shmiq idev
+INCLUDE: mouse keyboard
+* these are not needed (or wanted, for size reasons) in the miniroot
+* normally they are loadable, but miniroot is a forced link.
+USE : dial dialbox sball tablet calcomp hitachi imp magellan wacom
+*
+*     Machine dependent
+*
+*
+* gr2 - Extreme, XZ
+* ng1 - Indy, and XL
+*
+USE: ng1
+USE: gr2
+USE: mgras
+
+*
+*  Textport drivers
+*
+INCLUDE: tport
+INCLUDE: tportpckbd
+* everybody supports htport since IRIX 6.2
+INCLUDE: htport
+*
+*  Graphics drivers
+*
+*     Machine independent modules
+*     gfx must be last in this file, so that the kernel will call it first
+*
+USE: gfxs rrm xconn
+USE: gfx 

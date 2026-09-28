@@ -1,0 +1,7 @@
+*
+*   vino: Indy Video-In driver
+*
+*FLAG   PREFIX          SOFT    #DEV    DEPENDENCIES
+socdRD  vino_            9       -         vino_dap
+
+$$$

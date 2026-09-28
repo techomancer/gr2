@@ -1,0 +1,17 @@
+*
+*   gfxs:  graphics streams device
+*   $Revision: 1.4 $
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+sofp	gfxs		56	-	gfx, clone
+$$$
+
+#include "sys/gfx.h"
+
+#if defined(IP27)
+#define GFX_BOARD_LIMIT 128		/* maximum number of heads */
+#else
+#define GFX_BOARD_LIMIT 8		/* maximum number of heads */
+#endif
+int GfxBoardLimit = GFX_BOARD_LIMIT;
+struct gfx_board *GfxBoards[GFX_BOARD_LIMIT] ;

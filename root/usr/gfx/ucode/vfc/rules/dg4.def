@@ -1,0 +1,393 @@
+/* This is a generated file -- do not edit */
+define board_hardware
+{
+    exported int OldStyleStereo = 0;
+    exported int SerratedCSyncOnHSync = 0;
+    VideoClockRatioNumerator  = 1;      
+    if ((FieldsPerFrame == 2) &&
+	(FramesPerSecond <= 30) &&
+	(ActivePixelsPerLine < 800) &&
+	(ActiveLinesPerFrame < 600))
+    {
+	VideoClockRatioDenominator = 1;
+    }
+    else if (FramesPerSecond * TotalPixelsPerLine * TotalLinesPerFrame < (2 * 70.0e6))
+    {
+	VideoClockRatioDenominator = 2;
+    }
+    else
+    {
+	VideoClockRatioDenominator = 4;
+    }
+    SystemVideoClockRateMinimum = 12.0e6;
+    SystemVideoClockRateMaximum = 35.0e6;
+    DACRateMinimum = 13.0e6;
+    DACRateMaximum = 36.0e6;
+    signal "HSYNC" uses chip hardware signal "HSYNC";
+    signal "VSYNC" uses chip hardware signal "VSYNC";
+    signal "CSYNC" uses chip hardware signal "CSYNC";
+    signal "CBLANK" uses chip hardware signal "CBLANK";
+    signal "TRISYNC" uses chip hardware signal "TRISYNC";
+    signal "FIELD_START" uses chip hardware signal "FIELD_START";
+    signal "FIELD" uses chip hardware signal "FIELD";
+    signal "FRAME_START" uses chip hardware signal "FRAME_START";
+    signal "VIDEO_ACTIVE" uses chip hardware signal "VIDEO_ACTIVE";
+    signal "LINE_START" uses chip hardware signal "LINE_START";
+    signal "STEREO_OUT" uses chip hardware signal "STEREO_OUT";
+    signal "IMPREG_LD" uses chip hardware signal "IMPREG_LD";
+    signal "XMAPREG_LD" uses chip hardware signal "XMAPREG_LD";
+    signal "VOF_VDRC_EN" uses chip hardware signal "VOF_VDRC_EN";
+    composite sync signal is "CSYNC" active low;
+    active signal is "CBLANK" active high;
+    trilevel sync signal is "TRISYNC" active low;
+    pixel requesting signal is "VIDEO_ACTIVE" active high;
+    PFDSourceSignalName = "CSYNC";
+    rules = {
+	exported string dg4_def_version = "$Revision: 1.53 $";
+	if ((TotalPixelsPerLine % VideoClockRatioDenominator) != 0) 
+	    error "TotalPixelsPerLine is not divisible by " + VideoClockRatioDenominator;
+	if (!TransitionsDefinedOnSignal("CSYNC")) {
+	    signal "CSYNC" initial state = high;
+	    within each (edge of user sync) {
+		set signal "CSYNC" CorrespondingPolarity at BeginTime;
+	    }
+	}
+	if (!TransitionsDefinedOnSignal("CBLANK")) {
+	    signal "CBLANK" initial state = low;
+	    within each (edge of user blank) {
+		if (CorrespondingPolarity == low)
+		    set signal "CBLANK" high at BeginTime;
+		else
+		    set signal "CBLANK" low at BeginTime;
+	    }
+	}
+	if (!TransitionsDefinedOnSignal("VIDEO_ACTIVE")) {
+	    signal "VIDEO_ACTIVE" initial state = low;
+	    within each (edge of user active) {
+		set signal "VIDEO_ACTIVE" CorrespondingPolarity at (BeginTime - 13 clocks);
+	    }
+	}
+	if (!TransitionsDefinedOnSignal("TRISYNC")) {
+	    signal "TRISYNC" initial state = high;
+	    within each (edge of user trilevel) {
+		if (CorrespondingPolarity == low)
+		    set signal "TRISYNC" high at BeginTime;
+		else
+		    set signal "TRISYNC" low at BeginTime;
+	    }
+	}
+	if (!TransitionsDefinedOnSignal("FRAME_START")) {
+	    signal "FRAME_START" initial state = low;
+	    within each(frame) {
+		set signal "FRAME_START" high at (BeginTime + 0.25H);
+		set signal "FRAME_START" low at (BeginTime + 1.5H + 0.25H);
+	    }
+	}
+	if (!TransitionsDefinedOnSignal("FIELD_START")) {
+	    signal "FIELD_START" initial state = low;
+	    within each (field) {
+		within (line 1,1) {
+		    set signal "FIELD_START" high at (BeginTime + 0.25H);
+		    set signal "FIELD_START" low at (BeginTime + 1.5H + 0.25H);
+		}
+	    }
+	}
+	if (!TransitionsDefinedOnSignal("FIELD"))
+	{
+	    if (FieldsPerFrame < 2)
+	    {
+		signal "FIELD" initial state = low;
+	    }
+	    else
+	    {
+		int bUseEyes = 0;
+		int bUseOffsets = 0;
+		int bUseColors = 0;
+		within each (field)
+		{
+		    if (FieldEye[0] != FieldEye[FramePortionIndex - 1])
+			bUseEyes = 1;
+		    if (FieldLineOffset[0] != FieldLineOffset[FramePortionIndex - 1])
+			bUseOffsets = 1;
+		    if (FieldColor[0] != FieldColor[FramePortionIndex - 1])
+			bUseColors = 1;
+		}
+		if (bUseEyes)
+		{
+		    if (FieldEye[0] & 1) signal "FIELD" initial state = low;
+		    else signal "FIELD" initial state = high;
+		    within each (field)
+		    {
+			if (FramePortionIndex > 1)
+			{
+			    if ((FieldEye[FramePortionIndex - 1] & 1) != (FieldEye[FramePortionIndex - 2] & 1))
+			    {
+				if (FieldEye[FramePortionIndex - 1] & 1)
+				{
+				    within (line 1,1)
+				    {
+					set signal "FIELD" low at BeginTime;
+				    }
+				}
+				else  
+				{
+				    within (line 1,1)
+				    {
+					set signal "FIELD" high at BeginTime;
+				    }
+				}
+			    }
+			}
+		    }
+		}
+		else if (bUseOffsets)
+		{
+		    if (FieldLineOffset[0] & 1) signal "FIELD" initial state = high;
+		    else signal "FIELD" initial state = low;
+		    within each (field)
+		    {
+			if (FramePortionIndex > 1)
+			{
+			    if ((FieldLineOffset[FramePortionIndex - 1] & 1) != (FieldLineOffset[FramePortionIndex - 2] & 1))
+			    {
+				if (FieldLineOffset[FramePortionIndex - 1] & 1)
+				{
+				    within (line 1,1)
+				    {
+					set signal "FIELD" high at BeginTime;
+				    }
+				}
+				else  
+				{
+				    within (line 1,1)
+				    {
+					set signal "FIELD" low at BeginTime;
+				    }
+				}
+			    }
+			}
+		    }
+		}
+		else if (bUseColors)
+		{
+		    if (FieldColor[0] & 1) signal "FIELD" initial state = high;
+		    else signal "FIELD" initial state = low;
+		    within each (field)
+		    {
+			if (FramePortionIndex > 1)
+			{
+			    if ((FieldColor[FramePortionIndex - 1] & 1) != (FieldColor[FramePortionIndex - 2] & 1))
+			    {
+				if (FieldColor[FramePortionIndex - 1] & 1)
+				{
+				    within (line 1,1)
+				    {
+					set signal "FIELD" high at BeginTime;
+				    }
+				}
+				else  
+				{
+				    within (line 1,1)
+				    {
+					set signal "FIELD" low at BeginTime;
+				    }
+				}
+			    }
+			}
+		    }
+		}
+		else
+		{
+		    signal "FIELD" initial state = low;
+		    within each (field)
+		    {
+			if (FramePortionIndex > 1)
+			{
+			    if ((FramePortionIndex - 1) & 1)
+			    {
+				within (line 1,1)
+				{
+				    set signal "FIELD" high at BeginTime;
+				}
+			    }
+			    else
+			    {
+				within (line 1,1)
+				{
+				    set signal "FIELD" low at BeginTime;
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	}
+	    if (!TransitionsDefinedOnSignal("IMPREG_LD")) {
+		signal "IMPREG_LD" initial state = low;
+		within each (field) {
+		    if (FieldSwap[FramePortionIndex - 1]) {
+			within (line 1,1) {
+			    set signal "IMPREG_LD" high at (BeginTime + (4.0H));
+			    set signal "IMPREG_LD" low at (BeginTime + (4.0H) + 1.1 usec);
+			}
+		    }
+		}
+	    }
+	    if (!TransitionsDefinedOnSignal("XMAPREG_LD")) {
+		signal "XMAPREG_LD" initial state = low;
+		within each (rising edge of "IMPREG_LD") {
+		    set signal "XMAPREG_LD" high at BeginTime;
+		}
+		within each (falling edge of "IMPREG_LD") {
+		    set signal "XMAPREG_LD" low at BeginTime - 0.1 usec;
+		}
+		within each (positive pulse of "IMPREG_LD") {
+		    time pulseDuration;
+		    pulseDuration = (EndTime - BeginTime);
+		    if (pulseDuration < 1.0 usec)
+			error "Insufficient IMPREG_LD pulse == " + pulseDuration;
+		}
+	    }
+	if (!TransitionsDefinedOnSignal("VOF_VDRC_EN")) {
+	    time DIDLoadDone;
+	    time FieldStartDone;
+	    time VDRCStart;
+	    signal "VOF_VDRC_EN" initial state = low;
+	    within each (field)
+	    {
+		int nField = FramePortionIndex;
+		within each (falling edge of "IMPREG_LD")
+		{
+		    DIDLoadDone = BeginTime + 24.0 usec + 15.0 usec;
+		}
+		within each (falling edge of "FIELD_START")
+		{
+		    FieldStartDone = BeginTime;
+		}
+		if (DIDLoadDone > FieldStartDone)
+		    VDRCStart = DIDLoadDone;
+		else
+		    VDRCStart = FieldStartDone;
+		within each (line)
+		{
+		    if ((BeginTime <= VDRCStart) && (EndTime > VDRCStart))
+		    {
+			set signal "VOF_VDRC_EN" high at EndTime + 1.0H;
+		    }
+		}
+	    }
+		within each (field)
+		{
+		    set signal "VOF_VDRC_EN" low at EndTime - 1H;
+		}
+	}
+	if (!TransitionsDefinedOnSignal("HSYNC"))
+	{
+	    Time    durationHSync;
+	    signal "HSYNC" initial state = high;
+	    within (Horizontal Sync  1, 1)
+	    {
+		durationHSync = (EndTime - BeginTime);
+	    }
+	    if (SerratedCSyncOnHSync)
+	    {
+		info "Creating serrated composite sync on horizontal sync for field-matched genlock";
+		PFDSourceSignalName = "HSYNC";
+		within each (field)
+		{
+		    Time b;
+		    Time e;
+		    Time m;
+		    Time EndOfField;
+		    EndOfField = EndTime;
+		    within (Vertical Sync 1, 1)
+		    {
+			b = BeginTime;
+			e = EndTime;
+		    }
+		    within each (line)
+		    {
+			if (BeginTime < EndOfField)
+			{
+			    m = (BeginTime + EndTime) / 2;
+			    if ((m >= b) && (m < e))
+			    {
+				set signal "HSYNC" low at BeginTime;
+				set signal "HSYNC" high at EndTime - durationHSync;
+			    }
+			    else  
+			    {
+				set signal "HSYNC" low at BeginTime;
+				set signal "HSYNC" high at BeginTime + durationHSync;
+			    }
+			}
+		    }
+		}
+	    }
+	    else  
+	    {
+		PFDSourceSignalName = "CSYNC";
+		within each (line)
+		{
+		    set signal "HSYNC" low at BeginTime;
+		    set signal "HSYNC" high at BeginTime + durationHSync;
+		}
+	    }
+	}
+	if (!TransitionsDefinedOnSignal("VSYNC")) {
+	    signal "VSYNC" initial state = high;
+	    within each (Vertical Sync) {
+		set signal "VSYNC" low  at BeginTime;
+		set signal "VSYNC" high at EndTime;
+	    }
+	}
+	if (!TransitionsDefinedOnSignal("LINE_START")) {
+	    Time    durationHSync;
+	    within (Horizontal Sync  1, 1) {
+		durationHSync = EndTime - BeginTime;
+	    }
+	    signal "LINE_START" initial state = low;
+	    within each (line) {
+		set signal "LINE_START" high at BeginTime + 8 pixels + 0.15 usec;
+		set signal "LINE_START" low at BeginTime + 8 pixels + 0.15 usec + durationHSync;
+	    }
+	}
+        if (!TransitionsDefinedOnSignal("STEREO_OUT")) {
+	    int nEdgeCnt = 0;
+	    within (Vertical Sync 1, 1) {
+		within each (edge of PFDSourceSignalName) {
+		    nEdgeCnt++;
+		}
+	    }
+	    if (nEdgeCnt > 2)
+	    {
+		signal "STEREO_OUT" initial state = high;
+	    }
+	    else
+	    {
+		signal "STEREO_OUT" initial state = low;
+		within each(Vertical Sync) {
+		    set signal "STEREO_OUT" low  at BeginTime - 2.5H ignoring wrap error;
+		    set signal "STEREO_OUT" high at EndTime + 2.5H ignoring wrap error;
+		}
+	    }
+        }
+	{
+	    exported double HBackPorchClampStart;
+	    exported double HBackPorchClampLength;
+	    within (field active 1,1) {
+		within (line 2,2) {
+		    time LineStartTime;
+		    LineStartTime = BeginTime;
+		    within each (Horizontal Back Porch) {
+			time tBackPorchStart;
+			time tBackPorchLength;
+			tBackPorchStart = BeginTime - LineStartTime + 0 clocks;
+			HBackPorchClampLength = sec(HorizontalBackPorch)/2;
+			HBackPorchClampStart = sec(tBackPorchStart) + (HBackPorchClampLength/2);
+		    }
+		}
+	    }
+	}   
+    }
+}

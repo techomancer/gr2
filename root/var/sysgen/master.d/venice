@@ -1,0 +1,11 @@
+*#ident	"$Revision: 1.2 $"
+*
+* venice_dev: VENICE graphics output module.
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+s	venice_		-	-	io
+					vtport_init(){false}
+					vtport_reinit(){}
+					vtport_write(){}
+					vtport_unblank(){}
+$$$

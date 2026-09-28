@@ -1,0 +1,6 @@
+*
+* MAGELLAN:	STREAMS module for Logitech Magellan input device
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+omdR	magellan	-	-	idev
+$$$

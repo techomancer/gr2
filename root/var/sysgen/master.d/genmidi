@@ -1,0 +1,9 @@
+*
+* MIDIGENERIC:	streams midi parser/timestamp utility
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+omdR	gsm_	-
+						
+
+$$$
+

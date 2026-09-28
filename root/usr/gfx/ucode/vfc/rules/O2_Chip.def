@@ -1,0 +1,18 @@
+/*
+** samplechip.def
+*/
+
+define chip hardware vof {
+    LineLengthMaximum = 2160;
+    VerticalStateCount  = 200;
+    LineTypeCount  = 32;
+    TotalEdgeCount = 28;
+    StateRepetitionMaximum = 2048;
+    FieldCountMaximum = 16;
+
+    signal "A",	    permanent edge = { 0, 1, 2, 3}, initial state programmable;
+    signal "B",	    permanent edge = { 4, 5, 6, 7}, initial state programmable;
+    signal "C",	    permanent edge = { 8, 9,10,11,12,13,14,15}, initial state programmable;
+    signal "D",	    permanent edge = {16,17,18,19,20,21}, initial state programmable;
+    signal "E",	    permanent edge = {22,23,24,25,26,27}, initial state programmable;
+}

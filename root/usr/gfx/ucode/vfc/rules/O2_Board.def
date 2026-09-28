@@ -1,0 +1,215 @@
+/*
+** sampleboard.def - a sample board for building formats
+*/
+
+define board_hardware {
+
+    VideoClockRatioNumerator  = 1;     /* Clocks */
+    VideoClockRatioDenominator  = 1;   /* Pixels */
+    SystemVideoClockRateMinimum = 12.0e6;
+    SystemVideoClockRateMaximum = 35.0e6;
+    DACRateMinimum = 13.0e6;
+    DACRateMaximum = 36.0e6;
+
+    signal "HSYNC" uses chip hardware signal "A";
+    signal "VSYNC" uses chip hardware signal "B";
+    signal "CSYNC" uses chip hardware signal "C";
+    signal "CBLANK" uses chip hardware signal "D";
+    signal "TRISYNC" uses chip hardware signal "E";
+
+    composite sync signal is "CSYNC" active low;
+    active signal is "CBLANK" active high;
+    trilevel sync signal is "TRISYNC" active high;
+
+    rules = {
+	exported string def_version = "$Revision: 1.5 $";
+    	int bIsStereo = 0;
+    	int bIsInterlaced = 0;
+    	int bIsFieldSequential = 0;
+
+	if (TotalPixelsPerLine > LineLengthMaximum) {
+	    error "Total pixels per line (" 
+		    + TotalPixelsPerLine
+		    + ") is larger than what can be handled by hardware ("
+		    + LineLengthMaximum
+		    + ").";
+	}
+
+	VfoVersion  = 1;
+	DisplayArchitecture = "O2_GBE";
+
+    	within each (field)
+    	{
+    	    if (FieldEye[0] != FieldEye[FramePortionIndex - 1])
+    	    	bIsStereo = 1;
+    	    if (FieldLineOffset[0] != FieldLineOffset[FramePortionIndex - 1])
+    	    	bIsInterlaced = 1;
+    	    if (FieldColor[0] != FieldColor[FramePortionIndex - 1])
+    	    	bIsFieldSequential = 1;
+    	}
+
+    	if (FullScreenStereo)
+    	    FrameBufferHeight = ActiveLinesPerFrame + 40;
+    	else if (bIsInterlaced)
+    	    FrameBufferHeight = ActiveLinesPerFrame;
+    	else
+    	    FrameBufferHeight = ActiveLinesPerFrame/FieldsPerFrame;
+
+    	if (bIsInterlaced)
+    	    ScreenHeight = ActiveLinesPerFrame;
+    	else
+    	    ScreenHeight = ActiveLinesPerFrame/FieldsPerFrame;
+
+	/*
+	 * CSYNC
+	 */
+	if (!TransitionsDefinedOnSignal("CSYNC")) {
+
+	    /*
+	     * Should follow user sync exactly 
+	     */
+	    signal "CSYNC" initial state = high;
+	    within each (edge of user sync) {
+		set signal "CSYNC" CorrespondingPolarity at BeginTime;
+	    }
+	}
+
+	/*
+	 * HSYNC
+	 */
+	if (!TransitionsDefinedOnSignal("HSYNC")) {
+	    Time    durationHSync;
+
+	    signal "HSYNC" initial state = high;
+
+	    /* Measure a horizontal sync pulse */
+	    within (Horizontal Sync  1, 1) {
+		durationHSync = EndTime - BeginTime;
+	    }
+
+	    within each (line) {
+		set signal "HSYNC" low at BeginTime;
+		set signal "HSYNC" high at BeginTime + durationHSync;
+	    }
+	}
+
+
+	/*
+	 * CBLANK
+	 */
+	if (!TransitionsDefinedOnSignal("CBLANK")) {
+
+	    /*
+	     * Should follow user blank exactly 
+	     */
+	    signal "CBLANK" initial state = low;
+	    within each (edge of user blank) {
+		if (CorrespondingPolarity == low)
+		    set signal "CBLANK" high at BeginTime;
+		else
+		    set signal "CBLANK" low at BeginTime;
+	    }
+	}
+
+	/*
+	 * TRISYNC
+	 */
+	if (!TransitionsDefinedOnSignal("TRISYNC")) {
+
+	    /*
+	     * Should follow user trilevel sync exactly 
+	     */
+	    signal "TRISYNC" initial state = low;
+	    within each (edge of user trilevel) {
+		set signal "TRISYNC" CorrespondingPolarity at BeginTime;
+	    }
+	}
+
+	/*
+	 * VSYNC
+	 */
+	if (!TransitionsDefinedOnSignal("VSYNC")) {
+	    signal "VSYNC" initial state = high;
+
+	    within each(Vertical Sync) {
+		set signal "VSYNC" low  at BeginTime;
+		set signal "VSYNC" high at EndTime;
+	    }
+	}
+    }
+}
+
+#define MAX_M  256.0
+#define MAX_N   64.0
+#define MAX_P    3.0
+
+#define CRSTL   20.0
+
+postprocess {	/* M, N, & P divisors */
+    exported int DacPll_M = 0;
+    exported int DacPll_N = 0;
+    exported int DacPll_P = 0;
+
+    double target;
+    double fout;
+    double ferr;
+    double fvco;
+    double m, n, p;
+    double minError;
+    int mSave, nSave, pSave;
+
+    target = TotalLinesPerFrame * TotalPixelsPerLine * VerticalRetraceRate / 1.0e6;
+    minError = 200.0;
+
+    if ( (DacPll_M == 0) || (DacPll_N == 0) ) {
+
+	for ( m = 1.0; m <= MAX_M; m++ ) {
+	    for ( n = 1.0; n <= MAX_N; n++ ) {
+		for ( p = 0.0; p <= MAX_P; p++ ) {
+		    int     i;
+		    double  twoToP;
+		    
+		    /*
+		    **  Sure this twoToP code could look nicer but I
+		    **  couldn't get the compiler to take it any other way.
+		    */
+
+		    twoToP = 1.0;
+
+		    for ( i = 1; i <= p; i++)
+			    twoToP = twoToP * 2;
+
+		    fvco = ( m * CRSTL ) /( n );
+		    fout = ( m * CRSTL ) /( n * twoToP);
+
+		    ferr = fout - target;
+
+		    if ( ferr < 0 )
+			ferr =  (0.0-1.0) * ferr;
+
+		    if ((ferr < minError) && (fvco > 80.0e0) && (fvco < 220.0e0)) {
+			mSave =  m;
+			nSave =  n;
+			pSave =  p;
+
+			minError = ferr;
+		    }
+		}
+	    }
+	}
+
+	DacPll_M = mSave;
+	DacPll_N = nSave;
+	DacPll_P = pSave;
+
+	if (minError > 150.0) {	/* what is an acceptable number here? */
+	    error "Unable to establish suitable timing with Total pixels per line (" 
+		    + TotalPixelsPerLine
+		    + ") TotalPixelsPerLine ("
+		    + TotalPixelsPerLine
+		    + ") and VerticalRetraceRate("
+		    + VerticalRetraceRate
+		    + ").";
+	}
+    }
+}

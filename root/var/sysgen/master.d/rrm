@@ -1,0 +1,16 @@
+*
+*   rrm:  rendering resource manager
+*   $Revision: 1.3 $
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+sop	RRM_		57	-	gfx
+$$$
+
+#include "sys/rrm.h"
+#include "sys/types.h"
+
+#define RRM_MAXRN 128
+int rrm_maxrn = RRM_MAXRN;       /* maximum number of open rnodes */
+struct rrm_rnode RRMrn[RRM_MAXRN];
+sema_t	RRMcall_sema[RRM_MAXRN];
+struct pane rrm_pane[RRM_MAXRN];

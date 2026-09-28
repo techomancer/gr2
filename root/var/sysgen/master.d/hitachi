@@ -1,0 +1,7 @@
+*
+* HITACHI:	streams `hitachi parser'
+*
+*FLAG	PREFIX	SOFT	#DEV	DEPENDENCIES
+omdR	hitachi	-	-	idev
+$$$
+

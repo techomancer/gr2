@@ -1,0 +1,26 @@
+*
+* MIDI:		STREAMS driver for Musical Instrument Digital Interface
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+osfdR	midi_		201	-	clone, sduart
+$$$
+#include "sys/midi.h"
+/* maximum number of active instantiations */
+#define NMIDIS 64
+int midi_cnt = NMIDIS;
+
+/* spin lock for access to minor device array */
+lock_t midi_lock;
+
+/* The actual array of structure pointers to active instantiations */
+struct midiport *midi_ports[NMIDIS];
+
+/* maximum number of lower links */
+#define NMIDILINKS 40
+int midilink_cnt = NMIDILINKS;
+
+/* spin lock for access to lower link array */
+lock_t midilink_lock;
+
+/* The actual array of structure pointers to lower links */
+struct midilink *midi_links[NMIDILINKS];

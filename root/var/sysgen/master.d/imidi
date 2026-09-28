@@ -1,0 +1,9 @@
+*
+* MIDI:		STREAMS driver for Musical Instrument Digital Interface
+*
+* XXX for now, use major number = 121; get real number assigned
+*
+*FLAG	PREFIX		SOFT	#DEV	DEPENDENCIES
+osfdR	imidi_		202	-	clone
+$$$
+
