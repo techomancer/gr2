@@ -639,8 +639,12 @@ typedef struct {
  *   visuals), which then send 0x10B = 0, 0.
  *
  * 0x004 HQ2_GL_MAKECURRENT -- context bind            MakeCurrent (gr2_context.c)
- *     token      value                               meaning unknown (a context
- *                                                    or window id, unverified)
+ *     token      value                               visual of the bound window
+ *                                                    (inferred from IRIS GL
+ *                                                    traces): 4 = 24-bit RGB,
+ *                                                    2 = 12-bit RGB, 10 = 12-bit
+ *                                                    colour index (showmap);
+ *                                                    others unknown
  *
  * 0x006 HQ2_GL_FLUSH -- swap sync / Flush             Flush, SwapBuffers
  *     token      0
@@ -708,7 +712,14 @@ typedef struct {
  *                  obscured = 0, pieces = 1 = the whole window.
  *     pieces 0     obscured = 0: the whole window. obscured != 0: the kernel
  *                  sends one rectangle in the first pair (the window clamped
- *                  to the screen) while the count stays 0.
+ *                  to the screen) while the count stays 0. That box is only
+ *                  a bound: the visible region is too complex for a piece
+ *                  list and comes from the WID test, as for pieces > 4.
+ *                  twilight (IRIX 6.5.22 trace) draws the root window this
+ *                  way (1280x1024, wid 1, obscured 1, 0 pieces): Xsgi first
+ *                  paints the root's visible region with CID 1 (2D_CID_WRITE
+ *                  0xF100), then the GL draw, then CID 0 again; drawing the
+ *                  whole box painted over every desktop window.
  *     pieces > 4   no rectangles; the only way left is the per-pixel WID test
  *                  against the window-id (CID) planes Xsgi paints with
  *                  2D_CID_WRITE (inferred: that the microcode does this, and
@@ -1365,6 +1376,10 @@ typedef struct {
  *     token      buffer                              0/1
  * 0x035 HQ2_IGL_NORMAL                                n3f
  *     token x3   nx, ny, nz                          f32 (OpenGL uses 0x10D)
+ * 0x030 HQ2_IGL_INDEX -- current colour index        color(i) (showmap)
+ *     token      index           index 0x7030 (ITOF|C1)      integer
+ *   Sent to the RE3 R iterator as index << 11 (R is 12.11, RE3.h); G and B
+ *   are 0. Confirmed by rendering showmap's 4096 cells.
  * 0x036 HQ2_IGL_MATRIX -- mmode(MSINGLE) matrix       any matrix call
  *     token x16  m[0][0] .. m[3][3]                  f32, same order as 0x037
  *   The whole object-to-clip transform, multiplied on the host: libgl.so
@@ -1375,6 +1390,68 @@ typedef struct {
  * 0x041 HQ2_IGL_ENDPOLYGON                            endpolygon
  *     token      0
  *     then       LOADV | 0x065 = 0
+ * 0x042 HQ2_IGL_PCLOS -- close a pmv/pdr polygon      pclos (gl_i_pclos)
+ *     token      0
+ *     then       LOADV | 0x065 = 0
+ * 0x044 HQ2_IGL_PMV -- start a pmv/pdr polygon        pmv (gl_i_pmv2)
+ *     token      0
+ *     then       LOADV | 0x1AE = 0, then the point on 0x045
+ * 0x045 HQ2_IGL_PDR -- polygon point                  pmv / pdr (gl_i_pdr)
+ *     token x3   x, y, z         index 0x845 (V3) f32, 0x4845 (ITOF|V3) int
+ *   The old move/draw polygon interface, also used by rectf / circf
+ *   (gl_g_circf) and showmap (ITOF, 12-bit colour-index window): one
+ *   polygon through the same routine as bgnpolygon (0x1AE).
+ * 0x05B HQ2_IGL_MOVE -- pen up                        move (gl_i_move2)
+ *     token      0
+ *     then       the point on 0x05D
+ * 0x05D HQ2_IGL_DRAW -- line to a point               draw (gl_i_draw)
+ *     token x3   x, y, z         index 0x85D (V3) f32, ITOF forms for ints
+ *   A line from the previous point (the move, or the last draw) to this
+ *   one. gr_osview draws its outlines this way.
+ * 0x066 HQ2_IGL_CMOV -- current character position    cmov (gl_c_cmov)
+ *     token x3   x, y, z         index 0x866 (V3) f32
+ *   Object coordinates, transformed like a vertex.
+ * 0x04B HQ2_IGL_SWAPTMESH                            swaptmesh (gl_i_swaptmesh)
+ *     token      0
+ *   Inside bgntmesh (0x046, LOADV|0x047 ... 0x04A, the TRIANGLE_STRIP
+ *   tokens): swaps the two vertices the mesh keeps, so the next vertex
+ *   makes a triangle with them in the other order (fans and irregular
+ *   meshes; Backseat Driver's road and terrain send one per few vertices).
+ *   The emulator keeps one winding by flipping it per triangle and per
+ *   swap (inferred; matters only with back-face culling).
+ * 0x053 HQ2_IGL_SBOXF -- screen-aligned filled box  sboxf (gl_i_sboxf)
+ *     token      x1                                  f32
+ *     DATA       y1, x2, y2                          f32
+ *   sboxfi (gl_i_sboxfi) sends integers on 0x4053 / 0x41DF (ITOF). The two
+ *   corners are transformed and the axis-aligned box between them filled
+ *   in the current colour. twilight draws its stars as two crossed boxes.
+ * 0x069 / 0x06A / 0x06D HQ2_IGL_CHAR* -- a character bitmap at the cmov
+ *   position, which then advances (gr_osview labels; IRIX 6.5.22 trace).
+ *   The sender is not in libgl.so; the format is (inferred) from the glyph
+ *   data, which decodes to recognisable italic letters:
+ *     token x4   w << 16 | h                         glyph size
+ *                xorig << 16 | yorig                 i16 each; bottom-left =
+ *                                                    cpos - orig
+ *                xmove << 16 | ymove                 i16 each, advance
+ *                flags                               bit 0 clear: the first
+ *                                                    16-bit row slot is
+ *                                                    padding (odd h); high
+ *                                                    half 0xFFFF in 0x069/6A
+ *     token xN   rows, top row first, MSB = leftmost pixel, zero-padded:
+ *       0x069  N = 9:  two 16-bit rows per word, low half first (h <= 17)
+ *       0x06A  N = 17: the same (h <= 33)
+ *       0x06D  N = 17: one 32-bit row per word (w <= 32)
+ *   Drawn in the colour current at the cmov.
+ * 0x068 HQ2_IGL_GETCPOS -- read it back               getcpos (gl_g_getcpos)
+ *     token      0
+ *     then       Finish, read 3 words of the mailbox (shram 0x4022): x, y
+ *                (window pixels, stored to the caller as shorts), status
+ *                (sign bit set = position invalid, caller's values left
+ *                alone); then 0x0BD = 0. That x, y are window-relative
+ *                is (inferred) from the IRIS GL man page.
+ *   gr_osview lays out its labels from cmov + getcpos pairs.
+ * All tokens above: libgl.so of /usr/gfx/arch/IP12GR232 (IRIX 6.5), FIFO
+ * address = 0x42000 + index * 4 in its view of the board.
  * 0x07E HQ2_IGL_LCOLOR -- light colour (selected slot)  lmdef LCOLOR
  *     token x3   r, g, b                             f32: diffuse and specular
  *                                                    of the slot. IRIS GL sends
@@ -1416,8 +1493,21 @@ typedef struct {
 #define HQ2_IGL_WRITEMASK           0x005
 #define HQ2_IGL_BUFFER              0x008
 #define HQ2_IGL_NORMAL              0x035
+#define HQ2_IGL_INDEX               0x030
 #define HQ2_IGL_MATRIX              0x036
 #define HQ2_IGL_ENDPOLYGON          0x041
+#define HQ2_IGL_PCLOS               0x042
+#define HQ2_IGL_PMV                 0x044
+#define HQ2_IGL_PDR                 0x045
+#define HQ2_IGL_MOVE                0x05B
+#define HQ2_IGL_DRAW                0x05D
+#define HQ2_IGL_CMOV                0x066
+#define HQ2_IGL_GETCPOS             0x068
+#define HQ2_IGL_SWAPTMESH           0x04B
+#define HQ2_IGL_SBOXF               0x053
+#define HQ2_IGL_CHAR16              0x069
+#define HQ2_IGL_CHAR16_TALL         0x06A
+#define HQ2_IGL_CHAR32              0x06D
 #define HQ2_IGL_LCOLOR              0x07E
 #define HQ2_IGL_CLEAR               0x09E
 #define HQ2_IGL_ZCLEAR              0x09F
@@ -1540,11 +1630,20 @@ typedef struct {
  *
  * ---- Lines ----
  *
- * 0x12D HQ2_2D_LINE_SEG                               expLineSS, 4Dwm frames
+ * 0x12D HQ2_2D_LINE_SEG -- CapNotLast segments       expSegmentSS, expLineSS
  *     token      0
- *     DATA x4    x1, y1, x2, y2                      per segment, inclusive;
- *                                                    padding x1 = x2 = 1280
+ *     DATA x4    x1, y1, x2, y2                      per segment; (x2, y2) is
+ *                                                    NOT drawn; padding
+ *                                                    x1 = x2 = 1280 or all 0
  *     then       END_PRIMITIVE
+ *   expSegmentSS sends LINE_SEG when the GC cap style is CapNotLast and
+ *   SEGMENTS (0x159) otherwise (0x163 / 0x164 when the DDX's board field is
+ *   >= 5). It swaps a segment running towards -x / -y as (x2+1, y2+1) ->
+ *   (x1+1, y1+1) so the same pixels are drawn: xterm's hollow cursor
+ *   (103,497)-(110,497), (110,497)-(110,511), (104,511)-(111,511),
+ *   (103,498)-(103,512), (0,0)-(0,0). expLineSS also uses it for clipped
+ *   polyline pieces. 4Dwm's XOR move frame chains the four sides end to
+ *   start, so every corner is drawn once.
  * 0x148 HQ2_2D_LINE_MODE
  *     token      mode                                0xA seen
  * 0x14A HQ2_2D_LINE_CLIP
@@ -1558,7 +1657,10 @@ typedef struct {
  *     token      0
  *     DATA x4    x1, y1, x2, y2                      per segment; padded with
  *                                                    (1280, 1024) pairs
- *   Zero-width X lines: both endpoints are drawn, polyline joints once.
+ *   SEGMENTS draws both endpoints. A polyline draws each segment up to but
+ *   not including its end point, so joints are drawn once and the final
+ *   point is not drawn: expLineSS appends an (x + 1, y) point when the cap
+ *   style is not CapNotLast and the line is not closed.
  * 0x12F HQ2_2D_POINTS, 0x133 HQ2_2D_LINE, 0x162 HQ2_2D_FAST_LINE_AUX
  *     named from the DDX struct layout only (not seen in traces; unverified)
  *

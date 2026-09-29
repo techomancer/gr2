@@ -83,7 +83,10 @@ typedef union {
  * each pixel into the frame-buffer format of the target visual: 24-bit (R in
  * bits 7:0, G 15:8, B 23:16), 12-bit 4:4:4 (both 12-bit banks get the value;
  * the plane mask 0x000FFF / 0xFFF000 selects the buffer, see XMAP5.h) or
- * colour index. Packing has to happen in RE3 because a shaded span iterates
+ * colour index (the index rides in the R iterator, which is 12.11 = 23 bits
+ * against 8.11 for G and B, so a 12-bit index fits; showmap's 12-bit CI
+ * window, (inferred) from the register widths and confirmed by rendering).
+ * Packing has to happen in RE3 because a shaded span iterates
  * the channels independently. The register that selects 12-bit 4:4:4 packing
  * is not identified (ENABRGB is the 8-bit 3:3:2 mode; FBOPTION / UPACMODE
  * are candidates) (unverified). This is the same split as Newport, where
