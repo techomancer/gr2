@@ -1127,6 +1127,34 @@ typedef struct {
  *                                                    pixel in the MSB
  *     0x0B3 = 0 (end)
  *
+ * Pixel DMA writes (IRIS GL lrectwrite, libgl.so gl_gr2dma_lrectwrite;
+ * IRIX 5.3 MRI software trace):
+ *     0x0BC = 1, then the GR2 pixel-DMA ioctl; the kernel (_Gr2DMAtrigger,
+ *     see "FINISH-FLAG HANDSHAKE") sends
+ *     0x0B5 HQ2_GL_DMA_WRITE (pixel zoom 1) or 0x0B8 HQ2_GL_DMA_WRITE_ZOOM
+ *       token    x                                   window-relative
+ *       GE_DATA  y, width, height, words per row,    y = bottom edge of the
+ *                flag, 0                             rectangle (GL y up)
+ *   Rows arrive TOP row first: lrectwrite arrays are bottom row first, and
+ *   the kernel builds the VDMA "high to low" from the end of the array
+ *   (gr2_dma.c _Gr2HtoLmkudmada) unless the request says the client rows
+ *   are already top-down (request bit 2: _Gr2mkudmada). Large images come
+ *   in bands: OPART sends a 512x512 slice as 4 transfers of 128 rows at
+ *   y = 0, 128, 256, 384; filling each band bottom-up flipped every band
+ *   (confirmed by rendering the traced slice).
+ *     then       height * words-per-row words through HQ2_GEDMA (VDMA); the
+ *                kernel waits FIN2 (100 ms). Pixels per word = width / words
+ *                per row: 2 = 16-bit colour indices (seen: 64x64 image, 32
+ *                words/row, indices 0x2xx), first pixel in the high half;
+ *                1 = 32-bit, 4 = 8-bit (unverified).
+ *   libgl picks 0x0B8 when the rounded x pixel zoom is not 1 and sets flag
+ *   bit 0x10 in its request; the ioctl flag word also has bit 0 (write),
+ *   bit 1 (row stride set) and bits 2/3 from pixel-mode state. The word
+ *   the kernel forwards as "flag" is request bit 3 (meaning unverified).
+ *   Without a FIN2 the kernel logs "Gr2PixelDma: TIMEOUT gfx DMA did not
+ *   complete (finish flag not set)", raises a graphics error and detaches
+ *   the graphics process (Xsgi).
+ *
  * Pixel copies (__glExpFastCopyPixels):
  *     0x0A7 = 0; 0x0A8 = 0; 0x0BB x3 = 0.0, zoom x, zoom y
  *     0x0BA HQ2_GL_COPY_PIXELS
@@ -1143,6 +1171,8 @@ typedef struct {
 #define HQ2_GL_DRAW_START           0x0B1
 #define HQ2_GL_DRAW_RECT            0x0B2
 #define HQ2_GL_DRAW_END             0x0B3
+#define HQ2_GL_DMA_WRITE            0x0B5
+#define HQ2_GL_DMA_WRITE_ZOOM       0x0B8
 #define HQ2_GL_COPY_PIXELS          0x0BA
 #define HQ2_GL_PIXEL_ZOOM           0x0BB
 #define HQ2_GL_READ_MODE            0x0BC
