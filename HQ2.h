@@ -577,6 +577,20 @@ typedef struct {
  *     0x1E4 GE_CX_RESTORE_EXT    token; DATA = words; the words follow on
  *                                HQ2_GEDMA writes
  *
+ * HQ2_GEDMA read port flow control (inferred): the kernel starts the save
+ * VDMA right after queuing 0x1E1, with no barrier in between (only the FIN2
+ * wait of the preceding GE_HQMSAV, which drains the FIFO up to it). The
+ * VDMA is the MC as GIO master reading an HQ2 slave port, and dmasync (2 =
+ * clear sync source) is a retrace sync, not flow control. So the HQ2 itself
+ * must not hand out a word before the microcode has run 0x1E1 and supplied
+ * it: reads are held off (GIO wait) until the data exists. An emulator whose
+ * HQ2 runs asynchronously must do the same: a read that beat 0x1E1 in IRIS
+ * returned a stale word, shifting the saved image by one; the restore then
+ * failed and the other context's GL state stayed live (IRIX 6.5.22, amesh +
+ * ideas). The image is the state at 0x1E1's place in the command stream,
+ * so it cannot be produced lazily at read time. Reads past the end of the
+ * image are a kernel error on hardware (the emulator returns 0).
+ *
  * Size limits: none beyond kernel memory. The main buffer comes from
  * kmem_alloc; the extended ones grow in whole pages. vdma_kv splits a
  * transfer into 32 KB lines; a buffer outside the direct-mapped segment is
@@ -704,8 +718,25 @@ typedef struct {
  *
  *   How the pieces are to be read (Gr2ValidateClip, and IRIX 6.5.22 traces
  *   of atlantis and ideas with windows moved over them):
- *     pieces 1..4  draw only inside those rectangles. The obscured flag does
- *                  NOT gate this: atlantis partly covered by another window
+ *     pieces 1..4  the pieces come from the Xsgi DDX (gr2.so exp_window.c
+ *                  expValidateClip, ioctl 0x3F3 RRM_ValidateClip); the kernel
+ *                  forwards them unchanged. It starts from wid = the window's
+ *                  id (RRM window private +0x18), obscured = 1, widcheck = 1,
+ *                  numpieces = n visible rectangles of the clip region, then:
+ *                    whole window or n = 1: that piece, obscured = 0
+ *                    n = 2: both rectangles, wid = 1, obscured = 0
+ *                    n = 3..4 and (window box - region) is ONE rectangle:
+ *                      2 pieces [window box, that hole], wid = 0,
+ *                      obscured = 0 (a C / O shape)
+ *                    n = 3..4 otherwise: the n rectangles, obscured = 1
+ *                    n >= 5: numpieces = 0, obscured = 1 (WID test)
+ *                  So "wid" doubles as the piece mode (1 = list, 0 = window
+ *                  + hole). Drawing where a pixel lies in an ODD number of
+ *                  pieces (XOR) is right for all of these: lists are disjoint
+ *                  and the hole lies inside the window. A union reads the C
+ *                  as the whole window (atlantis drew under ideas,
+ *                  clipping.log: [60-318 x 566-885, 165-318 x 582-865]).
+ *                  The obscured flag does NOT gate this: atlantis partly covered by another window
  *                  arrived with obscured = 0, pieces = 2 (an L-shape: x
  *                  106-205 y 911-917 and x 106-127 y 818-910 of a 100x100
  *                  window at 106, 818). An unobscured window arrives with

@@ -101,6 +101,26 @@ typedef union {
 #define RE3_REG_HADDR               0x07    /* Starting horizontal pixel position (2 bits) */
 #define RE3_REG_NOPUP               0x08    /* Size of auxiliary data */
 #define RE3_REG_XYFRAC              0x09    /* Subpixel XY fraction (4 bits) */
+/*
+ * SHADED / FLAT are steppers, not horizontal spans: X and Y iterate by DX /
+ * DY (s16, 14 fraction bits, so up to +-2 pixels) per pixel for NUMPIX
+ * pixels (MAME sgi_re2 increment()). A horizontal span is DX = 1.0, DY = 0;
+ * an aliased GL line is one SHADED primitive with DX / DY = the unit major
+ * step and the minor slope, colour and Z iterated along it. RE3 clips it only
+ * by the scissor and the WID test, so a line in a window with several visible
+ * pieces is presumably issued once per piece with the scissor set to it
+ * (inferred; fits the DDX's at-most-4-piece clip encoding, HQ2.h 0x1E5).
+ * XYFRAC (4 bits, inferred): the MINOR axis's subpixel start in 1/16 pixel.
+ * The GE snaps vertices to 1/16 pixel, and a line's major axis starts on a
+ * pixel (its step is +-1.0), so one 4-bit fraction is all a DDA start needs;
+ * it forms the top 4 bits of the minor iterator's 14-bit fraction. DX / DY
+ * need their 14 fraction bits for the slope: a 1/16-precision slope would
+ * drift ~30 pixels over a 1000-pixel line. The GR1 RE1 spec (a grain of
+ * salt: older hardware) describes the same DDA: "iterators for X, Y, Z, R,
+ * G, B ... draw the line ... until the count register reaches zero", "the
+ * red iterator may also be interpreted as a 12-bit color index". MAME
+ * leaves XYFRAC as a TODO.
+ */
 #define RE3_REG_RGB                 0x0a    /* Initial packed color values (27 bits) */
 #define RE3_REG_YX                  0x0b    /* Initial packed Y (11 bits) and X (11 bits) */
 #define RE3_REG_PUPDATA             0x0c    /* Popup plane data (2 bits) */
