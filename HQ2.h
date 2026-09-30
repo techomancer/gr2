@@ -148,7 +148,8 @@ typedef union {
  *     FIN2  kernel requests. Port hq.fin2 (0x6A04C). Used by the kernel for
  *           the microcode start argument, context switch (GE_HQMSAV,
  *           0x1E0, 0x1E6), context save / restore DMA (0x1E1..0x1E4) and
- *           pixel DMA (0x147); polled in _Gr2UcodeReady. No FIN2 = "TIMEOUT
+ *           pixel DMA (writes 0x147 / 0x0B5 / 0x0B8, reads 0x152 / 0x0AC);
+ *           polled in _Gr2UcodeReady. No FIN2 = "TIMEOUT
  *           gfx" and a textport reload.
  *     FIN3  user-level requests. Write port 0x6B000 (outside the HQ block;
  *           HQ2_FIN3_OFFSET 0x100 unverified, never used). Raised by
@@ -203,7 +204,9 @@ typedef union {
  *               HQ2_GEDMA (32-bit, see GR2.h); wait FIN2.
  *     _Gr2DMAtrigger / _Gr2MCDMAtrigger (pixel DMA): dmasync = 2; fin2 = 0;
  *               fifo[cmd] = x0; then fifo[0] (index 0!) = x1, y0, height,
- *               pixsize, flag, 0; start DMA; wait FIN2.
+ *               pixsize, flag, 0; start DMA; wait FIN2. The token (cmd)
+ *               comes from the caller's request, so the same ioctl serves
+ *               both directions; see "PIXEL DMA DIRECTION".
  * The emulator raises FIN2 for the start argument, GE_HQMSAV, the context
  * save / restore tokens and the 0x1e0/0x1e6 requests; it reports the size
  * of its GL state in shram[0x302] so the kernel saves and restores it (see
@@ -577,7 +580,10 @@ typedef struct {
  *     0x1E4 GE_CX_RESTORE_EXT    token; DATA = words; the words follow on
  *                                HQ2_GEDMA writes
  *
- * HQ2_GEDMA read port flow control (inferred): the kernel starts the save
+ * HQ2_GEDMA read port flow control (inferred): the read port is the HQ2's
+ * output to the host, shared by every request that returns data by VDMA:
+ * context saves (0x1E1, 0x1E3) and pixel DMA reads (0x152, 0x0AC). The same
+ * rule applies to all of them. For the save: the kernel starts the save
  * VDMA right after queuing 0x1E1, with no barrier in between (only the FIN2
  * wait of the preceding GE_HQMSAV, which drains the FIFO up to it). The
  * VDMA is the MC as GIO master reading an HQ2 slave port, and dmasync (2 =
@@ -590,6 +596,12 @@ typedef struct {
  * ideas). The image is the state at 0x1E1's place in the command stream,
  * so it cannot be produced lazily at read time. Reads past the end of the
  * image are a kernel error on hardware (the emulator returns 0).
+ * Pixel reads are the same: the kernel queues 0x152 / 0x0AC and its
+ * header, then starts the VDMA at once; the words exist only after the
+ * microcode has drained the pipeline and read the rectangle. So a read
+ * waits while the port has no word and the HQ2 still has work queued or in
+ * progress (the data may yet come); with the HQ2 idle and no word, the
+ * read is an overrun.
  *
  * Size limits: none beyond kernel memory. The main buffer comes from
  * kmem_alloc; the extended ones grow in whole pages. vdma_kv splits a
@@ -633,6 +645,74 @@ typedef struct {
  *   words per row; 16/32-bit are (unverified).
  */
 #define HQ2_DMA_WRITE_PIXELS        0x147
+
+/*
+ * PIXEL DMA DIRECTION (kernel gr2_dma.c Gr2PixelDma / Gr2MCPixDma; libgl.so
+ * gl_gr2dma_lrectread; libglcore __glExpReadPixelsKDMA; Xsgi DDX
+ * expReadImage*):
+ *   The pixel-DMA ioctl (0x3AA2) takes a request whose first word is the
+ *   FIFO token the kernel sends. Request flag bit 0 selects the direction:
+ *     set    host -> board: MC DMA mode 0x54 (LONG | DIR | SYNC), the VDMA
+ *            writes the words to HQ2_GEDMA (tokens 0x147, 0x0B5, 0x0B8)
+ *     clear  board -> host: MC DMA mode 0x56 (adds TO_HOST), useracc for
+ *            B_READ; the VDMA reads the words from HQ2_GEDMA
+ *            (tokens 0x152, 0x0AC)
+ *   Header and FIN2 wait are the same in both directions: token = x;
+ *   GE_DATA y, width, height, words per row, flag, 0. Request flag bit 2
+ *   says the client's rows are already top-down (no "high to low" list,
+ *   _Gr2HtoLmkudmada); bit 1 = a row stride is set; with bit 4 the MC
+ *   path (Gr2MCPixDma) issues the transfer as several DMAs of a few rows
+ *   each (chunk size unverified: the 400-px read above came as 10 rows).
+ *   A read the microcode never answers (no FIN2 within 100,000 polls) logs
+ *   "Gr2PixelDma: TIMEOUT" and the kernel resets the board (PLL, bdvers,
+ *   textport reload), as IRIS did before it knew 0x152.
+ *
+ * 0x152 HQ2_2D_DMA_READ_PIXELS -- screen to host by VDMA   expReadImage,
+ *                                                         12, 24 (large)
+ *     before     MODE / COLOR_AUX / ROP select the planes (expReadImage24:
+ *                MODE 0x1004, COLOR_AUX 0, ROP [0, 0xFFFFFF, 3, 0]);
+ *                BUF_SELECT [format, slot]
+ *     token      x                                   screen, X-style
+ *     GE_DATA    y, width, height, words per row,    y = top row, X-style
+ *                flag, 0                             (top-down)
+ *     then       the VDMA reads height * words per row words from HQ2_GEDMA,
+ *                rows top first (DDX request flags 4, or 6 with a stride);
+ *                the kernel waits FIN2
+ *   The DDX uses it when the rectangle has more than 1024 pixels
+ *   (expReadImage24; 0x8000 / width rows per request, at most 0x44 rows
+ *   when strided), READ_IMAGE (0x158, PIO through shram) otherwise. Seen
+ *   (IRIX 6.5.22, XGetImage of a 400x300 window, 24-bit visual, MODE
+ *   0x1002, BUF_SELECT format 0): x 32; y 32, 400 px, 10 rows, 400
+ *   words/row, flag 0. Pixel words are packed as for READ_IMAGE
+ *   (BUF_SELECT format, MSB first) (inferred).
+ *   12-bit RGB windows (expReadImage12TC / expDrawImage12TC): MODE 0x1002,
+ *   ROP flag = the window's buffer (dbc) * 8, BUF_SELECT format 0. Each
+ *   32-bit word is the flagged 12-bit bank as 8:8:8: the DDX reads back
+ *   (w & 0xF) | (w & 0xF00) >> 4 | (w & 0xF0000) >> 8 (low nibbles) and
+ *   draws x as (x & 0xF) << 4 | (x & 0xF0) << 8 | (x & 0xF00) << 12 (high
+ *   nibbles), so the board replicates each nibble (inferred). Returning
+ *   the raw 24 bits of both banks mixed them (IRIS, XGetImage of glprim
+ *   --db: red read back as green-ish).
+ *   The flag names an absolute bank: the buffers never move in VRAM, the
+ *   DID's XMAP mode selects which one is shown. A GL buffer swap (Gr2SchedSwapBuf)
+ *   only rewrites the window's XMAP mode (pixel mode 4 <-> 5, through the
+ *   XMAP mode port 0x6C1A4 / 0x6C1B0); nothing tells the microcode, and
+ *   Xsgi keeps flag 0 for a GL window. So after an odd number of swaps
+ *   XGetImage of a double-buffered GL window returns the GL back buffer
+ *   (IRIS: glprim --db --read ximage,back gave equal checksums).
+ *   Drawing in MODE 2 (expDrawPoints, expTileRects, expDrawImage12TC): the
+ *   ROP flag is again the window's dbc buffer * 8; X does know about double
+ *   buffering (Xsgi dbc window private, byte 1: 0 / 1, or -1 = both
+ *   buffers and -3 = buffer 1, for which expTileRects doubles or shifts the
+ *   plane mask by the visual depth itself). The RE3 writes a 12-bit value
+ *   to both buffers and the plane mask picks one (RE3.h), so the microcode
+ *   presumably turns flag bit 3 into the upper plane mask. Image and tile
+ *   words come widened by the DDX (high nibbles); GC pixels (fg, glyph on
+ *   / off) are passed unconverted, so the microcode widens those
+ *   (inferred). IRIS: bank 0 = pm & 0xFFF without bit 3; with it, the mask
+ *   moved up unless the DDX already set upper bits.
+ */
+#define HQ2_2D_DMA_READ_PIXELS      0x152
 
 /*
  * ============================================================================
@@ -684,7 +764,13 @@ typedef struct {
  *
  * 0x10A HQ2_GL_READ_BUFFER -- read source select     __glExpSetReadBuffer,
  *                                                    Fetch, ReadColor
- *     token      buffer                              format (unverified)
+ *     token x2   kind, buffer                        0, 0 = front; 0, 1 =
+ *                                                    back; 1, n = with aux
+ *                                                    buffers (n = 1 only for
+ *                                                    a 2-bit index visual
+ *                                                    with 1 aux buffer);
+ *                                                    2, 0 = Z buffer (depth
+ *                                                    and stencil reads)
  *
  * 0x10B HQ2_GL_COLOR_WRITEMASK -- per-swap-state plane masks
  *                                                    __glExpSetPixWritemask
@@ -1136,6 +1222,52 @@ typedef struct {
  * 0x0BD HQ2_GL_READ_DONE
  *     token      0
  *
+ * glReadPixels paths (__glExpPickReadPixels, __glExpFastReadPixels):
+ *   fast path only for these (else __glSlowPickReadPixels, which reads
+ *   pixel by pixel through READ_RECT):
+ *     UNSIGNED_BYTE   COLOR_INDEX (no index transfer ops); RGBA or ABGR_EXT
+ *                     (RGBA context, no colour transfer ops)
+ *     UNSIGNED_SHORT  COLOR_INDEX
+ *     UNSIGNED_INT    COLOR_INDEX; DEPTH_COMPONENT (with a Z buffer, no
+ *                     depth transfer ops)
+ *   Within the fast path, __glExpInitPackAndUnpack flags the destination:
+ *   unaligned (address or row stride not a multiple of 4) or bit-level
+ *   packing selects Pack1 (READ_RECT 0x0AD, PIO through the mailbox);
+ *   otherwise the kernel pixel DMA with token 0x0AC:
+ *     __glExpReadPixelsKDMA      CI, ABGR_EXT, depth; 0x20000-byte chunks
+ *     __glExpReadPixelsKDMARGBA  RGBA; 0x8000-byte chunks, each row then
+ *                                byte-reversed per pixel on the host
+ *                                (__glExpSwapStuffAndCopy4): the board's
+ *                                32-bit pixel is ABGR order (inferred)
+ *   Depth: READ_BUFFER = 2, 0 and read setup 0x0A7 / 0x0A8 = 0 before the
+ *   read; the words come back right-justified and libglcore shifts each
+ *   left by 32 - depth bits. Stencil has no fast path: its Fetch (EXPRESS
+ *   gr2_stencil.c) is READ_RECT 1x1 with READ_BUFFER = 2, 0, the same as
+ *   depth, so the stencil bits presumably share the Z word (unverified).
+ *
+ * 0x0AC HQ2_GL_DMA_READ -- window to host by VDMA   gl_gr2dma_lrectread
+ *                                                   (IRIS GL lrectread),
+ *                                                   __glExpReadPixelsKDMA*
+ *     before     0x0BC READ_MODE = 1; 0x0BB PIXEL_ZOOM = 0.0, 1.0, 1.0;
+ *                read buffer as above
+ *     token      x                                   window-relative
+ *     GE_DATA    y, width, height, words per row,    y = bottom row, GL y
+ *                flag, 0                             up (as 0x0B5)
+ *     then       the VDMA reads height * words per row words from HQ2_GEDMA;
+ *                the kernel waits FIN2
+ *   Seen (IRIX 6.5.22, glprim --scene quadrants --db --read back: RGBA
+ *   UNSIGNED_BYTE of a 400x300 double-buffered 24-bit window, so the
+ *   KDMARGBA path): 0x0A7 = 0; 0x0A8 = 0; 0x10A = 0, 1 (back); 0x0BC = 1;
+ *   0x0BB = 0.0, 1.0, 1.0; then 0x0AC x 0; GE_DATA y 0, 400 px, 20 rows,
+ *   400 words/row, flag 0, 0. So 32-bit pixels, and the first request is the
+ *   bottom 20 rows (0x8000 bytes / 1600 bytes per row); libglcore steps y up
+ *   by the rows of each request. Unanswered (no data, no FIN2), the kernel
+ *   timed out, reset the board and then panicked.
+ *   Row order (inferred): the same as the 0x0B5 write, top row first, with
+ *   the kernel's "high to low" list putting it bottom-up into the client's
+ *   array unless request flag bit 2 is set. Pixel format per visual
+ *   (unverified; RGBA is 32-bit ABGR, see KDMARGBA above).
+ *
  * Pixel reads (ReadColor, ReadSpan, Fetch, __glExpReadPixels*):
  *     0x0A7 = 0; 0x0A8 = 0; 0x0BC = mode (0)
  *     0x0AD HQ2_GL_READ_RECT
@@ -1198,6 +1330,7 @@ typedef struct {
 #define HQ2_GL_PIXEL_DATA           0x071
 #define HQ2_GL_READ_SETUP_A         0x0A7
 #define HQ2_GL_READ_SETUP_B         0x0A8
+#define HQ2_GL_DMA_READ             0x0AC
 #define HQ2_GL_READ_RECT            0x0AD
 #define HQ2_GL_DRAW_START           0x0B1
 #define HQ2_GL_DRAW_RECT            0x0B2
@@ -1770,8 +1903,9 @@ typedef struct {
  *   Rows are packed back to back, words per row = ceil((slot + w) / pixels
  *   per word), first pixel in the most significant bits. The DDX splits
  *   reads to fit the staging area (<= 0x1000 bytes 8-bit, 0x4C00 16-bit,
- *   0x1300 pixels 32-bit). No DMA: the microcode copies VRAM into shram
- *   (microcode side inferred).
+ *   0x1300 pixels 32-bit). The microcode copies VRAM into shram (microcode
+ *   side inferred). Only small rectangles take this path (expReadImage24:
+ *   up to 1024 pixels); larger ones use the pixel-DMA read 0x152.
  */
 #define HQ2_2D_BEGIN                0x12C
 #define HQ2_2D_LINE_SEG             0x12D
