@@ -214,6 +214,59 @@ typedef union {
  */
 
 /*
+ * KERNEL WATCHDOGS (gr2.c, gr2_dma.c; messages from gr2.o .rodata, whose
+ * cmn_err format offsets are relative to 0x6F48):
+ *   The kernel has no periodic "is the GPU alive" check (nothing like a
+ *   Windows TDR timer). It detects a hang in two places, and both end in
+ *   gr2_error(): "Graphics error: GE PC = 0x%x", gthread_scan (graphics
+ *   processes lose the board), Gr2Reset, Gr2StartClock (the textport comes
+ *   back).
+ *   1. Completion polls: every FIN2 request polls version bit 1 in a
+ *      counted us_delay(1) loop and on expiry logs "(cpu=%d) <who>: TIMEOUT
+ *      gfx <what>" and calls gr2_error:
+ *        _Gr2CXSaveRestore   " data could not be saved/restored"
+ *        Gr2PcxSwap          " context switch did not complete (Start)",
+ *                            " Context Size change did not complete"
+ *        Gr2PcxSwitch        " context switch did not complete (Restore)"
+ *        Gr2DestroyDDRN      " Context Switch did not complete (Kill)" / (CX
+ *                            current RN)
+ *        Gr2PixelDma (gr2_dma.c) "TIMEOUT gfx DMA did not complete (finish
+ *                            flag not set)", 100,000 polls
+ *      The budget is a loop count (1,000,000 x us_delay(1) for context
+ *      switches), so in wall time it is about 1 s on hardware. gr2_error
+ *      resets the board under the caller, which then goes on with its
+ *      stale state (IRIS: a context switch timed out behind a long GL
+ *      backlog and the kernel crashed in Gr2PcxSwap's 0x1E5 loop).
+ *   2. FIFO full (Gr2FIFOInterrupt -> Gr2FIFOHandler), the closest thing to
+ *      a TDR. The HQ2 raises it when the FIFO level (version bits 12:6)
+ *      reaches hq.fifo_full (kernel: 40):
+ *        - version bit 5 (overflow): "gr2: FIFO overflowed, data is
+ *          destroyed - Reset graphics", gr2_error;
+ *        - level below the threshold: spurious, counted;
+ *        - else spin up to a tunable number of us for level < 36;
+ *        - still full and the writer is the kernel: spin up to 300,000 us
+ *          (0x493E0) for level < 41, else "gr2: KERNEL FIFO TIMEOUT",
+ *          gr2_error;
+ *        - still full and the writer is a user process: raise hq.fifo_full
+ *          to level + 1 (at least 40), mark the process waiting,
+ *          force_resched (it sleeps), and start Gr2FIFOTimeoutCallback with
+ *          fasthz * 2 ticks. The callout re-arms every fast tick while the
+ *          level is >= 35 and counts down; at 0: "gr2: FIFO TIMEOUT",
+ *          gr2_error. Below 35 it wakes the writer (force_resched);
+ *          Gr2FIFOPollLowater also clears it once the level drops under 35
+ *          and restores fifo_full = 40.
+ *      So a FIFO that stays above low water for about 2 s of fast-clock
+ *      ticks while a user process waits on it resets the board. It measures
+ *      the FIFO level only, not progress: on hardware a 512-word FIFO does
+ *      not stay full for 2 s unless the pipeline is stuck.
+ *   Emulator (IRIS): the FIFO-full interrupt is never raised (back-pressure
+ *   is bus busy on the store) and the level reads 0 with low water set, so
+ *   only the completion polls can fire. Their budget is held off by
+ *   stalling version reads while the HQ2 makes progress (fin2_wait; rules
+ *   /gr2/fin2-wait-must-stall.md).
+ */
+
+/*
  * FIN3 AND THE 0x6b000 PORT (2026-09, from Xsgi and the kernel):
  *   Xsgi (GL microcode loaded) sends FIFO token 0x155 (fifo offset 0x554)
  *   and then spins on hq.version bit 0 (FIN3) through its user mapping of
@@ -733,12 +786,46 @@ typedef struct {
  *   visuals), which then send 0x10B = 0, 0.
  *
  * 0x004 HQ2_GL_MAKECURRENT -- context bind            MakeCurrent (gr2_context.c)
- *     token      value                               visual of the bound window
- *                                                    (inferred from IRIS GL
- *                                                    traces): 4 = 24-bit RGB,
- *                                                    2 = 12-bit RGB, 10 = 12-bit
- *                                                    colour index (showmap);
- *                                                    others unknown
+ *     token      value                               visual of the bound window,
+ *                                                    from a kernel ioctl
+ *   Seen: 2 = 12-bit RGB, 4 = 24-bit RGB, 9 = 8-bit colour index (gr_osview,
+ *   6.5.22), 10 = 12-bit colour index (showmap). Inferred encoding: bit 3 =
+ *   colour index, low bits = depth (1 = 8, 2 = 12, 4 = 24); so 1 = 8-bit
+ *   3:3:2 RGB. The Xsgi DDX's 2D MODE low byte (window nfb type) appears to
+ *   use the same numbers (2 = 12-bit RGB, 4 = 24-bit, 9 = 8-bit CI).
+ *   IRIS GL zdraw() also sends it (4 or 10) while it redirects drawing into
+ *   the Z planes (0x00D below).
+ *
+ * 24-BIT DOUBLE BUFFERING
+ *   The board has 24 colour planes per pixel (two 12-bit buffers) and, with
+ *   the Z option, 24 Z planes. The XMAP pixel modes can show 12-bit and
+ *   8-bit buffers from either bank (PIX_12_0/1, PIX_8_0/1, flipped per DID
+ *   at swap) but 24-bit only as one buffer (PIX_24): there is no 24-bit
+ *   display swap. So:
+ *   - OpenGL (libglcore): double-buffered RGB is 12 bits per component
+ *     pair of banks. Its write masks are built by shifting the front mask
+ *     by the colour depth (__glExpPassDrawBuffer), which cannot express
+ *     a 24-bit double-buffered visual; none is offered.
+ *   - IRIS GL: zdraw() turns the Z planes into a 24-bit off-screen colour
+ *     buffer (0x00D below) and zsource() makes them the source of readback
+ *     and rectcopy (0x009 / 0x014). A program draws a frame into Z, then
+ *     copies it to the visible 24-bit colour planes: double buffering by
+ *     copy, not by display swap (and without a depth buffer meanwhile).
+ *     This is the "Z planes as the second buffer" the SGI documentation
+ *     mentions. Not implemented in the IRIS HLE.
+ *
+ * 0x00D HQ2_GL_ZDRAW -- draw into the Z planes         libgl gl_i_zdraw
+ *     token      1 / 0
+ *   IRIS GL zdraw(TRUE): 0x00D = 1, depth mask (0x00A) = 0, MAKECURRENT = 4
+ *   (or 10), write mask (0x005) packed for the visual; zdraw(FALSE) restores
+ *   them. This is the "Z planes as a second colour buffer" mechanism: draw
+ *   into Z, then zsource + rectcopy into the colour planes, e.g. for
+ *   24-bit double buffering on a board with 24 colour planes. OpenGL
+ *   (libglcore) has no such path: its double-buffer write masks shift by
+ *   the depth, which cannot express a 24-bit double-buffered visual.
+ *   (Not implemented in the IRIS HLE.)
+ * 0x009 / 0x014 -- zsource (libgl gl_i_zsource)
+ *     0x009 = source (0 colour, else Z), 0x014 = 0 / 1    (meaning inferred)
  *
  * 0x006 HQ2_GL_FLUSH -- swap sync / Flush             Flush, SwapBuffers
  *     token      0
@@ -1325,7 +1412,51 @@ typedef struct {
  *       DATA     6 words: source x, y, width, height, destination x, y
  *                (order unverified)
  *
- * 0x18C HQ2_GL_BITMAP (draw_bitmap)                   (layout not decoded)
+ * 0x105 HQ2_GL_RASTER_POS -- glRasterPos            gr_osview (6.5.22)
+ *     token      x
+ *     DATA       y, z, w                             f32, object coordinates
+ *   The GE transforms it and latches the current colour as the raster
+ *   colour. libglcore keeps the position itself (validRasterPos,
+ *   rasterPos.window) and reads back only the colour (0x107).
+ * 0x106 HQ2_GL_SET_RASTER_POS (libglcore pad2418, __glExpSetRasterPos...)
+ *     token      validRasterPos
+ *     DATA       window x, y, z, eye z, clip w, then RGBA (f32, x 0.99609375)
+ *                or, in colour index, on DATA|C1: index, 0, 0, 0
+ * 0x107 HQ2_GL_GET_RASTERPOS (__glExpGetRasterPosData)
+ *     token      0; then Finish; the mailbox (shram 0x4022) holds the
+ *                raster colour r, g, b, a (f32; CI: the index in r). Not the
+ *                position.
+ * 0x3104 HQ2_GL_CLEAR_CI (C1|0x104) -- glClearIndex + glClear
+ *     token      index (f32)
+ *     DATA       0, 0, 0
+ *   gr_osview clears with index 46; unimplemented, its window kept whatever
+ *   was under it.
+ * 0x0FE HQ2_GL_INDEX -- glIndex                        gr2_vapi.c
+ *     C1|0x0FE (0x30FE) f32 index, or ITOF|C1|0x0FE (0x70FE, the CI
+ *     aperture) integer index. gr_osview sets every colour this way; left
+ *     unimplemented, its colour-index window drew in the default colour
+ *     (all black).
+ * 0x18C / 0x18D / 0x18E HQ2_GL_BITMAP -- glBitmap   libglcore
+ *                                                  __glExpRenderBitmap
+ *     token x6   (width << 16) | height, xorig, yorig, xmove, ymove (f32), 1
+ *     DATA       the rows, TOP row first, one word per row, MSB = leftmost
+ *                pixel, zero-padded to a fixed block: 9 words (0x18C), 17
+ *                (0x18D), 33 (0x18E), picked by the number of data words
+ *   libglcore only takes this path for rows of up to 4 bytes (width <= 32)
+ *   and up to 33 data words; anything larger goes to
+ *   __glExpSlowRenderBitmap. It sends nothing when the raster position is
+ *   invalid, and updates its own copy of the raster position (x += xmove,
+ *   y += ymove * a per-context factor) after sending.
+ *   Row order: libglcore walks the GL array (bottom row first) from its
+ *   last row backwards, so the board always gets rows top first (drawn
+ *   bottom-first, gr_osview's labels came out upside down). The same holds
+ *   for IRIS GL's glyph tokens (0x069 / 0x06A / 0x06D, libfm); only the
+ *   PROM textport's DRAWCHAR takes rows bottom first. Neither the DDX nor
+ *   libgl.so uses 0x18C..0x18E.
+ *   The 6th header word is the literal 1 in the only sender (li t9, 1), so
+ *   it does not carry the row order or anything else per call; its meaning
+ *   is unknown (a microcode format / version field, perhaps).
+ *   Seen: width 16 for an 8-pixel font, heights 1..10, xmove 6.0..8.0.
  */
 #define HQ2_GL_PIXEL_DATA           0x071
 #define HQ2_GL_READ_SETUP_A         0x0A7
