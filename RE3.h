@@ -95,6 +95,23 @@ typedef union {
  * per channel with REX3's 4x4 Bayer matrix and x15/255 scaling (emulator
  * implementation; the exact RE3 dither matrix and phase are (unverified)).
  * The GE drives ENABDITH from GL_DITHER (FIFO token 0x011).
+ *
+ * Per visual (the GE learns the visual from MAKECURRENT, HQ2.h 0x004: bit 3
+ * = colour index, low bits = depth 1 / 2 / 4 = 8 / 12 / 24 bits):
+ *   24-bit RGB   R 7:0, G 15:8, B 23:16, single buffer
+ *   12-bit RGB   4:4:4, R 3:0, G 7:4, B 11:8, in both banks (11:0, 23:12)
+ *   8-bit RGB    3:3:2, R 7:5, B 4:3, G 2:0 (Xsgi visual masks red 0xE0,
+ *                green 0x07, blue 0x18; libglcore __glExpSetPixWritemask
+ *                packs 8-bit masks the same way)
+ *   12-bit CI    the index (12 bits) in both 12-bit banks
+ *   8-bit CI     the index (8 bits) (gr_osview, MAKECURRENT 9)
+ * For 8-bit double-buffered visuals libglcore builds the buffer masks by
+ * shifting by the depth (0x00FF / 0xFF00): the second 8-bit buffer is
+ * bits 15:8 (XMAP5.h). The emulator writes an 8-bit value as v | v << 8,
+ * like the 12-bit packing's both-banks write, and the mask picks one.
+ * GL blending does not apply in colour-index mode; the emulator skips it
+ * for both CI formats (gr_osview's CI8 window would otherwise have its
+ * indices blended as RGB).
  */
 #define RE3_REG_BIGENDIAN           0x05    /* Enable big-endian byte order */
 #define RE3_REG_FUNC                0x06    /* Raster operation logic function (4 bits) */

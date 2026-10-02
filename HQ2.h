@@ -1770,11 +1770,50 @@ typedef struct {
  * 0x068 HQ2_IGL_GETCPOS -- read it back               getcpos (gl_g_getcpos)
  *     token      0
  *     then       Finish, read 3 words of the mailbox (shram 0x4022): x, y
- *                (window pixels, stored to the caller as shorts), status
- *                (sign bit set = position invalid, caller's values left
- *                alone); then 0x0BD = 0. That x, y are window-relative
- *                is (inferred) from the IRIS GL man page.
+ *                (SCREEN pixels, GL y up, stored to the caller as shorts),
+ *                status (sign bit set = position invalid, caller's values
+ *                left alone); then 0x0BD = 0. Screen, not window: the IRIS
+ *                GL man page says so, and writepixels places its row at
+ *                getcpos - getorigin (0x0CD). Returning window-relative
+ *                values went unnoticed by gr_osview, which only uses
+ *                differences.
  *   gr_osview lays out its labels from cmov + getcpos pairs.
+ *   Status must be POSITIVE for a valid position, not just non-negative:
+ *   gl_g_writepixels / writeRGB also start with getcpos and return without
+ *   drawing when the status is 0 (IRIS returned 0: mandel's window stayed
+ *   grey). Valid = 1 in the emulator (the hardware value is unknown).
+ * writepixels / writeRGB (gl_g_writepixels): getcpos; clamp the count to
+ *   x < 0x800; rectwrite(x, y, x + n - 1, y) the row (tokens 0x0A7 / 0x0A8
+ *   and the pixel DMA); then move the character position past it:
+ * 0x0D0 HQ2_IGL_SETCPOS
+ *     token      x                                   screen pixels (getcpos x
+ *                                                    + count), untransformed
+ *     DATA       y, 0
+ * 0x0CD HQ2_GL_GET_ORIGIN -- window origin (getorigin; writepixels)
+ *     token      0; then Finish; mailbox x, y = the window's lower-left corner
+ *                in screen coordinates (ints); then 0x0BD = 0
+ *
+ * FIFO PIXEL WRITES (IRIS GL writepixels / writeRGB through rectwrite,
+ * mandel on IRIX 6.5.22; OpenGL glDrawPixels, __glExpDrawPixelsUnpack*):
+ *   per chunk of at most 48 (0x30) pixels:
+ *     0x0B1 = 0                start; the chunk's pixel words follow
+ *     0x071 word; DATA ...     pixel words. IRIS GL: blocks of 16 words
+ *                              (token + 15 DATA), one pixel per word (the
+ *                              colour index in the low bits), the last
+ *                              block padded with 0xDEADBEEF (mandel, a
+ *                              183-pixel CI12 row: 48 + 48 + 48 + 39). OpenGL's CopyToPipe1/4
+ *                              send up to 4 words per 0x071 and may pack
+ *                              several pixels per word (unverified).
+ *     0x0B2 = x; DATA y, width, width, flag
+ *                              place the chunk: window-relative x, y (GL y
+ *                              up; writepixels: getcpos - getorigin), width
+ *                              twice (meaning of the second unknown; equal
+ *                              in every trace), flag != 0 = pixels right to
+ *                              left (OpenGL negative x zoom)
+ *     0x0B3 = 0                end
+ *   Before the chunks IRIS GL sends 0x0A7 = 1, 0x0A8 = 0, 0x0A7 = 0,
+ *   0x0A8 = 0 and repeats that pair after the row; OpenGL sets the pixel
+ *   zoom (0x0BB) first.
  * All tokens above: libgl.so of /usr/gfx/arch/IP12GR232 (IRIX 6.5), FIFO
  * address = 0x42000 + index * 4 in its view of the board.
  * 0x07E HQ2_IGL_LCOLOR -- light colour (selected slot)  lmdef LCOLOR

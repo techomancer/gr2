@@ -166,6 +166,14 @@ struct gr2_xmap5 {
  *                       B = 11:8).
  *     - XMAP5_PIX_8_0:  8-bit 3:3:2 TrueColor RGB, Bank 0
  *     - XMAP5_PIX_8_1:  8-bit 3:3:2 TrueColor RGB, Bank 1
+ *                       Bank 1 of an 8-bit visual is bits 15:8: libglcore
+ *                       builds double-buffer write masks by shifting the
+ *                       bank-0 mask by the depth (12-bit 0x000FFF /
+ *                       0xFFF000, 8-bit 0x00FF / 0xFF00), so a buffer
+ *                       starts at its depth; by the same rule 4-bit bank 1
+ *                       is bits 7:4 (inferred from the masks; not yet seen
+ *                       on screen). IRIS read 8-bit bank 1 at 19:12 before
+ *                       (by analogy with 12-bit) and was changed to 15:8.
  *                       Bit order: R in bits 7:5, B 4:3, G 2:0 (NOT the
  *                       R-low 3:3:2 of REX3). Sources: the Xsgi 8-bit
  *                       TrueColor visual 0x27 (xdpyinfo, IRIX 6.5.22 XZ: red
