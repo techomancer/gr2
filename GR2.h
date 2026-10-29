@@ -170,6 +170,21 @@ typedef union {
  * The exact microcode mechanism is (unverified).
  * Destination-alpha factors collapse to ONE / ZERO (no alpha planes).
  *
+ * BLEND EQUATIONS other than add (EXT_blend_subtract, EXT_blend_minmax,
+ * which XZ's libglcore advertises along with EXT_blend_color and
+ * EXT_blend_logic_op) are done on the host: __glExpPassBlendFunc sends
+ * blending OFF (ONE, ZERO) for MIN, MAX, SUBTRACT and REVERSE_SUBTRACT,
+ * and libglcore's software span pipeline takes over: a READ_RECT of each
+ * span (the destination), __glBlendSpan, then the fragment store Store_B,
+ * which blends AGAIN while GL_BLEND is on (procs.blend = __glDoFetchBlend,
+ * with its own 1x1 READ_RECT). So these equations come out applied twice
+ * (SUBTRACT ONE/ONE gives s - 2d); MIN and MAX are unaffected. A libglcore
+ * bug, the same on hardware (the board only stores the fragments it is
+ * given). Found with test/gltest/blendtest (IRIX 6.5.22): every one of the
+ * 148 failing subtract / reverse-subtract cells matches the double blend.
+ * Constant-colour factors (EXT_blend_color) with the add equation go to
+ * the board like the GL 1.1 factors.
+ *
  * AB1 (0x06C1C0, "Kaleidoscope Alpha Blender") is part of the video option
  * path (graphics / live video mixing), not the GL fragment path.
  *

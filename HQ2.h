@@ -784,17 +784,28 @@ typedef struct {
  *     token      mask                                u32; 0 in normal contexts
  *   Sent instead of 0x10B by contexts with aux buffers (overlay / popup
  *   visuals), which then send 0x10B = 0, 0.
+ *   IRIS GL drawmode() (Blender 1.0's toolbox, IRIX 5.3) switches planes with
+ *   MAKECURRENT 11, 0x005 = 0 (colour planes off), 0x003 = the aux bits to
+ *   write (3 = the 2-bit overlay, aux bits 1:0 (OVERDRAW); 0xC = the popup
+ *   planes, aux bits 3:2 (PUPDRAW)), 0x008 = 1, n; it draws in colour
+ *   indices (0x7030), and goes back with MAKECURRENT 2 and 0x003 = 0. The
+ *   index lands in the aux bits as the X server's 2D path writes them
+ *   (MODE 0xB: shifted up two bits for the popup planes; inferred).
  *
  * 0x004 HQ2_GL_MAKECURRENT -- context bind            MakeCurrent (gr2_context.c)
  *     token      value                               visual of the bound window,
  *                                                    from a kernel ioctl
- *   Seen: 2 = 12-bit RGB, 4 = 24-bit RGB, 9 = 8-bit colour index (gr_osview,
- *   6.5.22), 10 = 12-bit colour index (showmap). Inferred encoding: bit 3 =
- *   colour index, low bits = depth (1 = 8, 2 = 12, 4 = 24); so 1 = 8-bit
- *   3:3:2 RGB. The Xsgi DDX's 2D MODE low byte (window nfb type) appears to
+ *   Seen: 0 = 4-bit 1:2:1 RGB (Xsgi visual 0x24, double buffered; its XMAP
+ *   mode word is 0xA0F10800: PIX_MODE 0 = 4-bit bank 0, PD_MODE RGB;
+ *   blendtest, 6.5.22), 2 = 12-bit RGB, 4 = 24-bit RGB, 9 = 8-bit colour
+ *   index (gr_osview, 6.5.22), 10 = 12-bit colour index (showmap). Encoding
+ *   (inferred): bit 3 = colour index, low bits = depth (0 = 4, 1 = 8, 2 =
+ *   12, 4 = 24); so 1 = 8-bit 3:3:2 RGB. The Xsgi DDX's 2D MODE low byte (window nfb type) appears to
  *   use the same numbers (2 = 12-bit RGB, 4 = 24-bit, 9 = 8-bit CI).
  *   IRIS GL zdraw() also sends it (4 or 10) while it redirects drawing into
- *   the Z planes (0x00D below).
+ *   the Z planes (0x00D below). 8 and 11 are the 4-bit overlay and the 2-bit
+ *   overlay / popup planes (the 2D MODE numbers too): IRIS GL drawmode
+ *   OVERDRAW / PUPDRAW, see 0x003.
  *
  * 24-BIT DOUBLE BUFFERING
  *   The board has 24 colour planes per pixel (two 12-bit buffers) and, with
@@ -1236,7 +1247,11 @@ typedef struct {
  *   accumulate.
  * 0x30A0 (C1|0x0A0) HQ2_GL_CLEAR_CI_DEPTH -- colour index + depth
  *                                                    CZClear (gr2_ci.c)
- *     token      index, then DATA words as for 0x0A0 (unverified)
+ *     token      index (f32), then DATA words as for 0x0A0 (unverified)
+ * 0x70A0 (ITOF|C1|0x0A0) -- the same with an integer index: seen as 3; DATA
+ *     0, 0, 0, depth 0xFFFFF, 0xFFFFFFFF (pixtest --ci 8 on a z20 s4 visual,
+ *     glClear(COLOR | DEPTH | STENCIL), IRIX 6.5.22). Left unanswered the
+ *     window keeps its old contents.
  * 0x0A1 HQ2_GL_CLEAR_STENCIL                          Clear (gr2_stencil.c)
  *     token      value
  *     DATA       write mask
@@ -1330,7 +1345,14 @@ typedef struct {
  *   read; the words come back right-justified and libglcore shifts each
  *   left by 32 - depth bits. Stencil has no fast path: its Fetch (EXPRESS
  *   gr2_stencil.c) is READ_RECT 1x1 with READ_BUFFER = 2, 0, the same as
- *   depth, so the stencil bits presumably share the Z word (unverified).
+ *   depth's Fetch, and returns the word ANDed with 0xF, while depth's Fetch
+ *   keeps (1 << depth bits) - 1 of it. On a z20 s4 visual (GL_DEPTH_BITS
+ *   20, GL_STENCIL_BITS 4) Z is bits 19:0 of the word: libglcore's Z write
+ *   mask (0x00A) is 0x0FFFFF and every depth read drops what lies above
+ *   bit 19. So the stencil is bits 23:20 (inferred), and glReadPixels of
+ *   GL_STENCIL_INDEX (and stencil copies) on these visuals return Z's low
+ *   four bits: a libglcore bug, if the inference holds. Unverified on
+ *   hardware.
  *
  * 0x0AC HQ2_GL_DMA_READ -- window to host by VDMA   gl_gr2dma_lrectread
  *                                                   (IRIS GL lrectread),
@@ -1356,31 +1378,49 @@ typedef struct {
  *   (unverified; RGBA is 32-bit ABGR, see KDMARGBA above).
  *
  * 0x0AD HQ2_GL_READ_RECT through the mailbox, IRIS GL (libgl readpixels /
- * rectread, snoop on IRIX 6.5.22): 0x0BC = 0; 0x0AD = x; DATA y, width,
+ * lrectread, snoop on IRIX 6.5.22): 0x0BC = 0; 0x0AD = x; DATA y, width,
  * height, 1, 0, 0; then libgl polls version bit 0 (FIN3) WITHOUT sending a
  * Finish, copies the pixels from shram word 0x4022 on (one per word), acks
  * FIN3 at 0x6B000 and sends 0x0BD = 0. So the microcode raises FIN3 itself
- * at the end of READ_RECT. Row order of multi-row reads (unverified; the
- * emulator gives the top row first, as for 0x0AC). Unimplemented, snoop
- * spun on FIN3 for its whole time slice.
+ * at the end of READ_RECT. Unimplemented, snoop spun on FIN3 for its whole
+ * time slice.
+ * OpenGL (libglcore __glExpReadPixelsPack1, its span reads) puts the words
+ * per row in the 4th DATA word (Pack1: (row bytes + 3) / 4, chunks of at
+ * most 0x578 words) and the packing in 0x0A7 (see Pixel reads below).
+ * Rows come BOTTOM first: pixtest's 13x5 colour-index Pack1 reads (CI8 and
+ * CI12, IRIX 6.5.22) only come out right that way (top first, pixel (0,0)
+ * got row 4's index). RGBA Pack1 reads go a row at a time. IRIS GL's
+ * gl_g_lrectread also walks its chunks upwards from the bottom.
  * IRIS GL rectzoom sends 0x0BB with the first word (0.0) on the token and
  * the x / y zooms on DATA; libglcore sends all three words to the token.
  *
  * Pixel reads (ReadColor, ReadSpan, Fetch, __glExpReadPixels*):
- *     0x0A7 = 0; 0x0A8 = 0; 0x0BC = mode (0)
+ *     0x0A7 = packing; 0x0A8 = 0; 0x0BC = mode (0)
  *     0x0AD HQ2_GL_READ_RECT
  *       token    x
- *       DATA     y, width, height, 1, 0, 0           (ReadColor: y, 1, 1, 1, 0, 0)
+ *       DATA     y, width, height, words per row,    (ReadColor: y, 1, 1, 1, 0, 0)
+ *                0, 0
  *     then       Finish, read the mailbox / staging area, 0x0BD = 0
+ *   0x0A7 is the pixel packing of the words read or drawn: 0 = one 32-bit
+ *   pixel a word, 1 = two 16-bit, 2 = four 8-bit, first pixel in the MSB.
+ *   Seen 2 for UNSIGNED_BYTE and 1 for UNSIGNED_SHORT colour-index images,
+ *   0 for RGBA and depth (pixtest --ci 8 / 12, IRIX 6.5.22). Ignoring it,
+ *   packed indices drew as 32-bit values (all 255 / 4095).
  *
- * Pixel draws (__glExpDrawPixelsUnpack1/4):
+ * Pixel draws (__glExpDrawPixelsUnpack1/4, __glExpFastDrawPixels):
+ *     0x0A7 = packing (as for reads)
  *     0x0BB HQ2_GL_PIXEL_ZOOM
- *       token x3 0.0, zoom, 1.0                      f32 (meaning of the 3
- *                                                    words unverified)
+ *       token x3 0.0, |zoom x|, 1.0                  f32; the x zoom as a
+ *                                                    whole number (truncated)
  *     0x0B1 = 0 (start)
- *     0x0B2 HQ2_GL_DRAW_RECT, per chunk
+ *     0x0B2 HQ2_GL_DRAW_RECT, per row
  *       token    x
- *       DATA     y, width, height, flags             (unverified)
+ *       DATA     y, pixels, words, flag              flag != 0: right to left
+ *                                                    (negative x zoom)
+ *   libglcore repeats each row itself for the y zoom (one 0x0B2 per output
+ *   row, y stepping by one) and leaves the x zoom to the board, which
+ *   repeats every pixel zoom x times: pixtest zoom 2,2 / 3,1 / 2,-3
+ *   (IRIX 6.5.22) only pass that way. Fractional zooms take another path.
  *     0x071 HQ2_GL_PIXEL_DATA, per group of pixels  __glExpCopyToPipe1/4,
  *                                                    __glExpSwapToPipe1/4
  *       token    first word
@@ -1424,11 +1464,20 @@ typedef struct {
  *   the graphics process (Xsgi).
  *
  * Pixel copies (__glExpFastCopyPixels):
- *     0x0A7 = 0; 0x0A8 = 0; 0x0BB x3 = 0.0, zoom x, zoom y
+ *     0x0A7 = 0; 0x0A8 = 0; 0x0BB x3 = 0.0, |zoom x|, |zoom y| (whole numbers)
  *     0x0BA HQ2_GL_COPY_PIXELS
  *       token    0
- *       DATA     6 words: source x, y, width, height, destination x, y
- *                (order unverified)
+ *       DATA     source y, destination y, height, source x, destination x,
+ *                width                             window coordinates, GL y up
+ *   From the emitter's argument order (x, y, width, height on its stack) and
+ *   pixtest copy cases (IRIX 6.5.22: src (60, 60) 21x9 to (65, 63) arrives
+ *   as 60, 63, 9, 60, 65, 21). The copy reads the read buffer (0x10A) and
+ *   draws each pixel zoom x by zoom y into the draw buffer's planes.
+ *   libglcore picks this path only for colour (RGBA or index) without pixel
+ *   transfer, with zooms of at least 1, and not when blending or a logic op
+ *   meets different read and draw buffers; the rest goes through
+ *   ReadPixels / DrawPixels on the host. Unimplemented, every copy left
+ *   the destination as it was.
  *
  * 0x105 HQ2_GL_RASTER_POS -- glRasterPos            gr_osview (6.5.22)
  *     token      x
@@ -1714,9 +1763,18 @@ typedef struct {
  * 0x005 HQ2_IGL_WRITEMASK                             wmpack / swapbuffers
  *     token      plane mask                          0x000FFF / 0xFFF000 in
  *                                                    12-bit double buffering
- * 0x008 HQ2_IGL_BUFFER -- draw buffer                 frontbuffer / backbuffer
- *     token      0
- *     token      buffer                              0/1
+ * 0x008 HQ2_IGL_BUFFER -- read source                 readsource
+ *     token      plane                               0 = colour, 1 = overlay /
+ *                                                    popup, 2, 3 = other
+ *                                                    planes (gl_setreadsource)
+ *     token      bank                                0/1, absolute
+ *   Sent by gl_setreadsource, not frontbuffer/backbuffer (those send the
+ *   write mask 0x005, also absolute). libgl tracks the displayed bank
+ *   itself: gl_do_swapbuffers flips its front bank and its current read
+ *   bank and the IRIS GL stream carries no 0x1E7; the kernel flips XMAP
+ *   mode bit 24 for the window's DID. Front = the displayed bank, back =
+ *   the other. rectcopy reads this bank: Blender copies its back-buffer
+ *   views to the front with 0x008 = 0, 1 and write mask 0x000FFF.
  * 0x035 HQ2_IGL_NORMAL                                n3f
  *     token x3   nx, ny, nz                          f32 (OpenGL uses 0x10D)
  * 0x030 HQ2_IGL_INDEX -- current colour index        color(i) (showmap)
@@ -1762,6 +1820,14 @@ typedef struct {
  *   meshes; Backseat Driver's road and terrain send one per few vertices).
  *   The emulator keeps one winding by flipping it per triangle and per
  *   swap (inferred; matters only with back-face culling).
+ * 0x052 HQ2_IGL_SBOX -- screen-aligned box outline   sbox / sboxi / sboxs
+ *     token      x1; DATA y1, x2, y2                 f32; integers on 0x4052 /
+ *                                                    0x41DF (ITOF)
+ *   Senders gl_i_sbox / gl_c_sbox, gl_i_sboxi / gl_c_sboxi, gl_i_sboxs
+ *   (libgl.so, IP12GR232). The outline of the box between the transformed
+ *   corners in the current colour; Blender 1.0 draws its interface lines as
+ *   degenerate boxes (sboxi(0, 21, 1379, 21)). Unimplemented, its grids and
+ *   button borders were missing.
  * 0x053 HQ2_IGL_SBOXF -- screen-aligned filled box  sboxf (gl_i_sboxf)
  *     token      x1                                  f32
  *     DATA       y1, x2, y2                          f32
@@ -1820,8 +1886,10 @@ typedef struct {
  *                              colour index in the low bits), the last
  *                              block padded with 0xDEADBEEF (mandel, a
  *                              183-pixel CI12 row: 48 + 48 + 48 + 39). OpenGL's CopyToPipe1/4
- *                              send up to 4 words per 0x071 and may pack
- *                              several pixels per word (unverified).
+ *                              send up to 4 words per 0x071, packed as
+ *                              0x0A7 says (four UNSIGNED_BYTE indices a
+ *                              word, first in the MSB; pixtest --ci 8),
+ *                              padded to 16 words.
  *     0x0B2 = x; DATA y, width, width, flag
  *                              place the chunk: window-relative x, y (GL y
  *                              up; writepixels: getcpos - getorigin), width
@@ -1851,10 +1919,15 @@ typedef struct {
  *   LEQUAL); reading it as a plane mask is (inferred).
  *   powerflip clears with czclear = 0x68A0 instead (Z = 0xFF800000 = ZMIN) and
  *   draws with zfunction(ZF_GEQUAL) = 0x024 value 6; Z is signed (RE3.h).
- * 0x0CF readback                                     (blast, per frame)
- *     token      0
+ * 0x0CF HQ2_IGL_GET_COLOR                            gRGBcolor, getcolor
+ *     token      0                                   (blast per frame,
+ *                                                    solidview)
  *     then       Finish, read 3 words from the mailbox (shram 0x4022..), then
- *                0x0BD = 0. What it returns is (unverified).
+ *                0x0BD = 0.
+ *   The mailbox holds the current colour R, G, B as RE3 8.11 iterator
+ *   values: libgl.so (IP12GR232) gRGBcolor stores (w >> 11) & 0xff of words
+ *   0x4022/0x4023/0x4024 to its r, g, b shorts; getcolor returns
+ *   (0x4022 >> 11) ANDed with the write mask (the index in CI mode).
  * 0x0DB HQ2_IGL_LIGHTING                              lmbind
  *     token      0
  *     DATA       enable                              0/1 (like 0x10E); 0x0D4
@@ -1917,6 +1990,7 @@ typedef struct {
 #define HQ2_IGL_CMOV                0x066
 #define HQ2_IGL_GETCPOS             0x068
 #define HQ2_IGL_SWAPTMESH           0x04B
+#define HQ2_IGL_SBOX                0x052
 #define HQ2_IGL_SBOXF               0x053
 #define HQ2_IGL_CHAR16              0x069
 #define HQ2_IGL_CHAR16_TALL         0x06A
@@ -2074,7 +2148,17 @@ typedef struct {
  *   not including its end point, so joints are drawn once and the final
  *   point is not drawn: expLineSS appends an (x + 1, y) point when the cap
  *   style is not CapNotLast and the line is not closed.
- * 0x12F HQ2_2D_POINTS, 0x133 HQ2_2D_LINE, 0x162 HQ2_2D_FAST_LINE_AUX
+ * 0x161 HQ2_2D_POLYPOINT -- XDrawPoints                expPolyPoint
+ *     token      0
+ *     DATA x2    x, y                                per point, screen
+ *                                                    coordinates; padded
+ *                                                    with (1280, 1024) pairs
+ *     then       END_PRIMITIVE
+ *   Sent after LINE_MODE 0xA and LINE_CLIP, which clips the points (seen:
+ *   xlock pop / hop, the Pop and Space Plants screen savers, whose sparks
+ *   are 2x2 groups of points).
+ * 0x12F HQ2_2D_POINTS -- expDrawPoints: token 0, then (x, y) pairs (not
+ *   seen in traces). 0x133 HQ2_2D_LINE, 0x162 HQ2_2D_FAST_LINE_AUX
  *     named from the DDX struct layout only (not seen in traces; unverified)
  *
  * ---- Text and bitmaps ----
@@ -2130,6 +2214,7 @@ typedef struct {
 #define HQ2_2D_LINE_SEG             0x12D
 #define HQ2_2D_POLYLINE             0x12E
 #define HQ2_2D_POINTS               0x12F
+#define HQ2_2D_POLYPOINT            0x161
 #define HQ2_2D_SOLID_RECT           0x130
 #define HQ2_2D_POLY_SPAN            0x131
 #define HQ2_2D_LINE                 0x133

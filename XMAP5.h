@@ -182,6 +182,13 @@ struct gr2_xmap5 {
  *                       way; 4Dwm's minimized-window icon images (8-bit
  *                       TrueColor tiles) only look right decoded this way.
  *     - 4-bit TrueColor (Xsgi visual 0x24): red 0x8, green 0x6, blue 0x1.
+ *                       PIX_MODE 0 / 1 (4-bit bank 0 / 1, bank 1 = bits
+ *                       7:4) with PD_MODE RGB; the GL window of visual 0x24
+ *                       gets mode word 0xA0F10800 (IRIX 6.5.22, blendtest).
+ *   Widening to the DAC's 8 bits (inferred): bit replication (3-bit 4 ->
+ *   0x92, 2-bit 2 -> 0xAA, 1-bit 1 -> 0xFF), which equals GL's rounded
+ *   conversion for these widths; truncating division (4 -> 0x91) put GL
+ *   logic-op readbacks of the 3:3:2 visual off by one.
  *   When PD_MODE == XMAP5_PD_CI:
  *     - XMAP5_PIX_12_0/1: 12-bit Color Index (4,096 colors through CLUT), Bank 0 / 1
  *     - XMAP5_PIX_8_0/1:   8-bit Color Index (256 colors at page PIX_PG), Bank 0 / 1
